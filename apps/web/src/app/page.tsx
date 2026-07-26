@@ -20,10 +20,10 @@ export default function HomePage() {
 function Navbar() {
   return (
     <header className="border-border/60 bg-background/90 sticky top-0 z-40 border-b backdrop-blur-sm">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <Link
           href="/"
-          className="font-display text-text-primary text-lg uppercase tracking-[0.06em]"
+          className="font-display text-text-primary text-base uppercase tracking-[0.06em] sm:text-lg"
         >
           OpenWish Studio
         </Link>
@@ -44,7 +44,7 @@ function Navbar() {
         <div className="flex items-center gap-2">
           <Link
             href="/auth/login"
-            className="text-text-secondary hover:bg-surface-hover hover:text-text-primary rounded-sm px-4 py-2 text-sm transition-colors"
+            className="text-text-secondary hover:bg-surface-hover hover:text-text-primary rounded-sm px-2.5 py-2 text-sm transition-colors sm:px-4"
           >
             Masuk
           </Link>
@@ -65,16 +65,16 @@ function Navbar() {
 function HeroSection() {
   return (
     <section className="bg-spotlight relative">
-      <div className="mx-auto max-w-5xl px-6 pb-16 pt-24 text-center">
-        <div className="border-border bg-surface text-text-secondary inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-medium uppercase tracking-[0.14em]">
+      <div className="mx-auto max-w-5xl px-6 pb-16 pt-16 text-center sm:pt-24">
+        <div className="border-border bg-surface text-text-secondary inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-center text-[11px] font-medium uppercase tracking-[0.14em] sm:text-xs">
           Buat ucapan yang tak terlupakan
         </div>
-        <h1 className="font-display text-text-primary mt-8 text-6xl uppercase leading-none tracking-[0.02em] sm:text-7xl">
+        <h1 className="font-display text-text-primary mt-8 text-5xl uppercase leading-none tracking-[0.02em] sm:text-6xl md:text-7xl">
           Ucapan spesial,
           <br />
           <span className="text-secondary">langsung dari hati</span>
         </h1>
-        <p className="text-text-secondary mx-auto mt-6 max-w-xl text-lg">
+        <p className="text-text-secondary mx-auto mt-6 max-w-xl text-base sm:text-lg">
           Buat ucapan interaktif untuk ulang tahun, pernikahan, wisuda, dan momen istimewa lainnya.
           Desain bebas, bagikan lewat link — tanpa aplikasi.
         </p>
@@ -145,13 +145,13 @@ const FEATURES = [
 
 function FeaturesSection() {
   return (
-    <section id="fitur" className="py-24">
+    <section id="fitur" className="py-16 sm:py-24">
       <div className="mx-auto max-w-5xl px-6">
         <div className="mb-12 text-center">
           <p className="text-text-secondary text-xs font-medium uppercase tracking-[0.14em]">
             Fitur
           </p>
-          <h2 className="font-display text-text-primary mt-3 text-4xl uppercase tracking-[0.03em]">
+          <h2 className="font-display text-text-primary mt-3 text-3xl uppercase tracking-[0.03em] sm:text-4xl">
             Semua yang kamu butuhkan
           </h2>
           <p className="text-text-secondary mt-3">
@@ -194,13 +194,13 @@ const STEPS = [
 
 function HowItWorksSection() {
   return (
-    <section id="cara-kerja" className="py-24">
+    <section id="cara-kerja" className="py-16 sm:py-24">
       <div className="mx-auto max-w-5xl px-6">
         <div className="mb-12 text-center">
           <p className="text-text-secondary text-xs font-medium uppercase tracking-[0.14em]">
             Alur
           </p>
-          <h2 className="font-display text-text-primary mt-3 text-4xl uppercase tracking-[0.03em]">
+          <h2 className="font-display text-text-primary mt-3 text-3xl uppercase tracking-[0.03em] sm:text-4xl">
             Cara kerjanya
           </h2>
           <p className="text-text-secondary mt-3">Tiga langkah mudah untuk ucapan yang istimewa</p>
@@ -225,9 +225,9 @@ function HowItWorksSection() {
 
 function CtaSection() {
   return (
-    <section className="bg-surface bg-spotlight relative overflow-hidden py-24">
+    <section className="bg-surface bg-spotlight relative overflow-hidden py-16 sm:py-24">
       <div className="mx-auto max-w-2xl px-6 text-center">
-        <h2 className="font-display text-text-primary text-4xl uppercase tracking-[0.03em]">
+        <h2 className="font-display text-text-primary text-3xl uppercase tracking-[0.03em] sm:text-4xl">
           Siap membuat ucapan spesial?
         </h2>
         <p className="text-text-secondary mt-4">

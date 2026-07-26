@@ -3,16 +3,13 @@
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import type { ProjectDocument } from '@openwish/project-schema'
-import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
+import { SceneStack } from '@/features/viewer/components/SceneStack'
 
 interface Props {
   projectId: string
   projectName: string
   document: ProjectDocument
 }
-
-const BASE_WIDTH = 390
-const VIEWER_MAX_WIDTH = 480
 
 export function DraftPreview({ projectId, projectName, document }: Props) {
   const [audioEnabled, setAudioEnabled] = useState(false)
@@ -51,7 +48,7 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
             Editor
           </Link>
           <span className="text-text-muted text-xs">|</span>
-          <span className="text-text-primary max-w-48 truncate text-sm font-medium">
+          <span className="text-text-primary max-w-28 truncate text-sm font-medium sm:max-w-48">
             {projectName}
           </span>
         </div>
@@ -97,31 +94,8 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
       )}
 
       {/* Scenes */}
-      <main
-        className="flex w-full flex-col items-center gap-0 py-0"
-        style={{ maxWidth: VIEWER_MAX_WIDTH }}
-      >
-        {document.scenes.map((scene) => {
-          const scale = VIEWER_MAX_WIDTH / BASE_WIDTH
-
-          return (
-            <section
-              key={scene.id}
-              aria-label={scene.name}
-              style={{
-                width: VIEWER_MAX_WIDTH,
-                aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}`,
-              }}
-            >
-              <SceneRenderer
-                scene={scene}
-                scale={scale}
-                interactive={false}
-                audioEnabled={audioEnabled}
-              />
-            </section>
-          )
-        })}
+      <main className="flex w-full flex-1 flex-col items-center">
+        <SceneStack scenes={document.scenes} audioEnabled={audioEnabled} />
       </main>
 
       <footer className="text-text-muted py-6 text-center text-xs">

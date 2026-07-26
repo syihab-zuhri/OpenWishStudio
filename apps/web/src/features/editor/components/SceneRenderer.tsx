@@ -137,6 +137,10 @@ function ElementRenderer({
     zIndex: element.zIndex,
     pointerEvents: interactive && !element.locked ? 'auto' : 'none',
     cursor: interactive && !element.locked ? 'default' : undefined,
+    // Sentuh: tanpa touch-action none, browser memilih scroll alih-alih drag
+    touchAction: interactive && !element.locked ? 'none' : undefined,
+    userSelect: interactive ? 'none' : undefined,
+    WebkitUserSelect: interactive ? 'none' : undefined,
     // Selection affordance = editor chrome — ikut token design system (cream), bukan konten scene
     outline: selected ? '2px solid var(--color-primary)' : undefined,
     outlineOffset: selected ? '1px' : undefined,
@@ -188,6 +192,7 @@ function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesPr
     border: '1.5px solid var(--color-text-on-primary)',
     borderRadius: 2,
     pointerEvents: onHandlePointerDown ? 'auto' : 'none',
+    touchAction: 'none',
   }
 
   function makeHandler(handle: 'nw' | 'ne' | 'sw' | 'se') {

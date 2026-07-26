@@ -34,12 +34,12 @@ export default async function DashboardPage() {
     <div className="bg-background min-h-screen">
       {/* Topbar */}
       <header className="bg-surface shadow-xs sticky top-0 z-10">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-          <span className="font-display text-text-primary text-base uppercase tracking-[0.06em]">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <span className="font-display text-text-primary shrink-0 text-base uppercase tracking-[0.06em]">
             OpenWish Studio
           </span>
-          <div className="flex items-center gap-3">
-            <span className="text-text-secondary text-sm">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <span className="text-text-secondary min-w-0 truncate text-sm">
               {profile?.display_name ?? user.email}
             </span>
             <SignOutButton />
@@ -48,14 +48,14 @@ export default async function DashboardPage() {
       </header>
 
       {/* Content */}
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="font-display text-text-primary text-4xl uppercase tracking-[0.02em]">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <h1 className="font-display text-text-primary text-3xl uppercase tracking-[0.02em] sm:text-4xl">
             Kreasimu
           </h1>
           <Link
             href="/editor/new"
-            className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-5 py-2 text-xs font-semibold uppercase tracking-[0.06em] transition-colors"
+            className="bg-primary text-text-on-primary hover:bg-primary-hover shrink-0 rounded-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.06em] transition-colors sm:px-5"
           >
             + Buat Baru
           </Link>
@@ -144,7 +144,7 @@ function ProjectCard({
 
 function SignOutButton() {
   return (
-    <form action="/api/v1/auth/signout" method="POST">
+    <form action="/api/v1/auth/signout" method="POST" className="shrink-0">
       <button
         type="submit"
         className="text-text-secondary hover:bg-surface-hover hover:text-text-primary rounded-sm px-3 py-1.5 text-sm transition-colors"
