@@ -30,22 +30,25 @@ interface DragState extends DragStartPayload {
 export function useDrag({ zoom, onCommit }: UseDragOptions) {
   const drag = useRef<DragState | null>(null)
 
-  const startDrag = useCallback(
-    (e: React.PointerEvent, payload: DragStartPayload) => {
-      e.preventDefault()
-      e.stopPropagation()
-      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-      drag.current = {
-        ...payload,
-        pointerStartX: e.clientX,
-        pointerStartY: e.clientY,
-      }
-    },
-    [],
-  )
+  const startDrag = useCallback((e: React.PointerEvent, payload: DragStartPayload) => {
+    e.preventDefault()
+    e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    drag.current = {
+      ...payload,
+      pointerStartX: e.clientX,
+      pointerStartY: e.clientY,
+    }
+  }, [])
 
   const onPointerMove = useCallback(
-    (e: React.PointerEvent, liveUpdate: (elementId: string, patch: { x?: number; y?: number; width?: number; height?: number }) => void) => {
+    (
+      e: React.PointerEvent,
+      liveUpdate: (
+        elementId: string,
+        patch: { x?: number; y?: number; width?: number; height?: number },
+      ) => void,
+    ) => {
       const d = drag.current
       if (!d) return
 
@@ -95,7 +98,15 @@ export function useDrag({ zoom, onCommit }: UseDragOptions) {
   )
 
   const onPointerUp = useCallback(
-    (e: React.PointerEvent, liveUpdate: (elementId: string, patch: { x?: number; y?: number; width?: number; height?: number }) => void) => {
+    // Signature kept parallel to onPointerMove so callers can pass the same
+    // handler pair; the commit itself happens in the store, not here.
+    (
+      e: React.PointerEvent,
+      _liveUpdate: (
+        elementId: string,
+        patch: { x?: number; y?: number; width?: number; height?: number },
+      ) => void,
+    ) => {
       const d = drag.current
       if (!d) return
       drag.current = null
@@ -112,11 +123,27 @@ export function useDrag({ zoom, onCommit }: UseDragOptions) {
       } else {
         const minW = 8
         const minH = 8
-        let x = d.startX, y = d.startY, w = d.startW, h = d.startH
-        if (d.handle === 'nw') { w = Math.max(minW, d.startW - dx); h = Math.max(minH, d.startH - dy); x = d.startX + d.startW - w; y = d.startY + d.startH - h }
-        else if (d.handle === 'ne') { w = Math.max(minW, d.startW + dx); h = Math.max(minH, d.startH - dy); y = d.startY + d.startH - h }
-        else if (d.handle === 'sw') { w = Math.max(minW, d.startW - dx); h = Math.max(minH, d.startH + dy); x = d.startX + d.startW - w }
-        else if (d.handle === 'se') { w = Math.max(minW, d.startW + dx); h = Math.max(minH, d.startH + dy) }
+        let x = d.startX,
+          y = d.startY,
+          w = d.startW,
+          h = d.startH
+        if (d.handle === 'nw') {
+          w = Math.max(minW, d.startW - dx)
+          h = Math.max(minH, d.startH - dy)
+          x = d.startX + d.startW - w
+          y = d.startY + d.startH - h
+        } else if (d.handle === 'ne') {
+          w = Math.max(minW, d.startW + dx)
+          h = Math.max(minH, d.startH - dy)
+          y = d.startY + d.startH - h
+        } else if (d.handle === 'sw') {
+          w = Math.max(minW, d.startW - dx)
+          h = Math.max(minH, d.startH + dy)
+          x = d.startX + d.startW - w
+        } else if (d.handle === 'se') {
+          w = Math.max(minW, d.startW + dx)
+          h = Math.max(minH, d.startH + dy)
+        }
         patch = { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) }
       }
 

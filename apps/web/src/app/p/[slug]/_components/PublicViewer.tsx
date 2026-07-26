@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import Link from 'next/link'
 import type { ProjectDocument } from '@openwish/project-schema'
 import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 
@@ -14,8 +15,8 @@ const VIEWER_MAX_WIDTH = 480
 
 export function PublicViewer({ document, expiresAt }: Props) {
   const [audioEnabled, setAudioEnabled] = useState(false)
-  const [showAudioPrompt, setShowAudioPrompt] = useState(
-    () => document.scenes.some((sc) => sc.elements.some((el) => el.type === 'audioControl')),
+  const [showAudioPrompt, setShowAudioPrompt] = useState(() =>
+    document.scenes.some((sc) => sc.elements.some((el) => el.type === 'audioControl')),
   )
 
   const handleEnableAudio = useCallback(() => {
@@ -31,22 +32,22 @@ export function PublicViewer({ document, expiresAt }: Props) {
     expiresAt !== null && new Date(expiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center">
+    <div className="flex min-h-screen flex-col items-center bg-neutral-950">
       {showAudioPrompt && !audioEnabled && (
         <div
           role="dialog"
           aria-label="Aktifkan audio"
-          className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
+          className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8"
           style={{ background: 'rgba(0,0,0,0.6)' }}
         >
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm text-center">
-            <div className="text-3xl mb-3" aria-hidden="true">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className="mb-3 text-3xl" aria-hidden="true">
               🎵
             </div>
-            <h2 className="text-base font-semibold text-neutral-900 mb-1">
+            <h2 className="mb-1 text-base font-semibold text-neutral-900">
               Ucapan ini memiliki musik
             </h2>
-            <p className="text-sm text-neutral-500 mb-5">
+            <p className="mb-5 text-sm text-neutral-500">
               Aktifkan audio untuk pengalaman terbaik.
             </p>
             <div className="flex gap-3">
@@ -70,7 +71,7 @@ export function PublicViewer({ document, expiresAt }: Props) {
       {isExpiringSoon && expiresAt && (
         <div
           role="status"
-          className="w-full bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs text-amber-700"
+          className="w-full border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-700"
         >
           Ucapan ini akan kedaluwarsa pada{' '}
           <time dateTime={expiresAt}>
@@ -83,7 +84,10 @@ export function PublicViewer({ document, expiresAt }: Props) {
         </div>
       )}
 
-      <main className="w-full flex flex-col items-center gap-0 py-0" style={{ maxWidth: VIEWER_MAX_WIDTH }}>
+      <main
+        className="flex w-full flex-col items-center gap-0 py-0"
+        style={{ maxWidth: VIEWER_MAX_WIDTH }}
+      >
         {document.scenes.map((scene) => {
           const scale = VIEWER_MAX_WIDTH / BASE_WIDTH
 
@@ -91,7 +95,10 @@ export function PublicViewer({ document, expiresAt }: Props) {
             <section
               key={scene.id}
               aria-label={scene.name}
-              style={{ width: VIEWER_MAX_WIDTH, aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}` }}
+              style={{
+                width: VIEWER_MAX_WIDTH,
+                aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}`,
+              }}
             >
               <SceneRenderer
                 scene={scene}
@@ -106,12 +113,12 @@ export function PublicViewer({ document, expiresAt }: Props) {
 
       <footer className="py-6 text-center text-xs text-neutral-600">
         Dibuat dengan{' '}
-        <a
+        <Link
           href="/"
-          className="text-violet-400 hover:text-violet-300 underline underline-offset-2"
+          className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
         >
           OpenWish Studio
-        </a>
+        </Link>
       </footer>
     </div>
   )

@@ -16,8 +16,8 @@ const VIEWER_MAX_WIDTH = 480
 
 export function DraftPreview({ projectId, projectName, document }: Props) {
   const [audioEnabled, setAudioEnabled] = useState(false)
-  const [showAudioPrompt, setShowAudioPrompt] = useState(
-    () => document.scenes.some((sc) => sc.elements.some((el) => el.type === 'audioControl')),
+  const [showAudioPrompt, setShowAudioPrompt] = useState(() =>
+    document.scenes.some((sc) => sc.elements.some((el) => el.type === 'audioControl')),
   )
 
   const handleEnableAudio = useCallback(() => {
@@ -30,24 +30,30 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
   }, [])
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center">
+    <div className="flex min-h-screen flex-col items-center bg-neutral-950">
       {/* Draft Banner */}
-      <div className="w-full bg-violet-600 px-4 py-2.5 flex items-center justify-between gap-4">
+      <div className="flex w-full items-center justify-between gap-4 bg-violet-600 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <Link
             href={`/editor/${projectId}`}
-            className="flex items-center gap-1.5 text-sm text-violet-100 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 text-sm text-violet-100 transition-colors hover:text-white"
             aria-label="Kembali ke editor"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
             Editor
           </Link>
-          <span className="text-violet-300 text-xs">|</span>
-          <span className="text-sm font-medium text-white truncate max-w-48">{projectName}</span>
+          <span className="text-xs text-violet-300">|</span>
+          <span className="max-w-48 truncate text-sm font-medium text-white">{projectName}</span>
         </div>
-        <span className="shrink-0 rounded-full bg-violet-500/60 border border-violet-400/50 px-2.5 py-0.5 text-xs font-medium text-violet-100">
+        <span className="shrink-0 rounded-full border border-violet-400/50 bg-violet-500/60 px-2.5 py-0.5 text-xs font-medium text-violet-100">
           Draft Preview
         </span>
       </div>
@@ -57,17 +63,17 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
         <div
           role="dialog"
           aria-label="Aktifkan audio"
-          className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4"
+          className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8"
           style={{ background: 'rgba(0,0,0,0.6)' }}
         >
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm text-center">
-            <div className="text-3xl mb-3" aria-hidden="true">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className="mb-3 text-3xl" aria-hidden="true">
               🎵
             </div>
-            <h2 className="text-base font-semibold text-neutral-900 mb-1">
+            <h2 className="mb-1 text-base font-semibold text-neutral-900">
               Ucapan ini memiliki musik
             </h2>
-            <p className="text-sm text-neutral-500 mb-5">
+            <p className="mb-5 text-sm text-neutral-500">
               Aktifkan audio untuk pengalaman terbaik.
             </p>
             <div className="flex gap-3">
@@ -89,7 +95,10 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
       )}
 
       {/* Scenes */}
-      <main className="w-full flex flex-col items-center gap-0 py-0" style={{ maxWidth: VIEWER_MAX_WIDTH }}>
+      <main
+        className="flex w-full flex-col items-center gap-0 py-0"
+        style={{ maxWidth: VIEWER_MAX_WIDTH }}
+      >
         {document.scenes.map((scene) => {
           const scale = VIEWER_MAX_WIDTH / BASE_WIDTH
 
@@ -97,7 +106,10 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
             <section
               key={scene.id}
               aria-label={scene.name}
-              style={{ width: VIEWER_MAX_WIDTH, aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}` }}
+              style={{
+                width: VIEWER_MAX_WIDTH,
+                aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}`,
+              }}
             >
               <SceneRenderer
                 scene={scene}
@@ -112,12 +124,12 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
 
       <footer className="py-6 text-center text-xs text-neutral-600">
         Dibuat dengan{' '}
-        <a
+        <Link
           href="/"
-          className="text-violet-400 hover:text-violet-300 underline underline-offset-2"
+          className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
         >
           OpenWish Studio
-        </a>
+        </Link>
       </footer>
     </div>
   )

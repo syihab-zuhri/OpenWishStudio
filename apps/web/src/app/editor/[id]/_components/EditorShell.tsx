@@ -2,7 +2,11 @@
 
 import { useEffect, useCallback, useRef, useState } from 'react'
 import type { ProjectDocument, ElementNode, Scene } from '@openwish/project-schema'
-import { initEditorStore, useEditorStore, type SaveStatus } from '@/features/editor/store/editorStore'
+import {
+  initEditorStore,
+  useEditorStore,
+  type SaveStatus,
+} from '@/features/editor/store/editorStore'
 import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 import { useDrag } from '@/features/editor/hooks/useDrag'
 import { useAutosave } from '@/features/editor/hooks/useAutosave'
@@ -17,19 +21,11 @@ interface Props {
   initialRevision: number
 }
 
-export default function EditorShell({
-  projectId,
-  initialName,
-  initialDocument,
-}: Props) {
+export default function EditorShell({ projectId, initialName, initialDocument }: Props) {
   // Bootstrap store once on mount
   useEffect(() => {
-    initEditorStore(
-      projectId,
-      initialName,
-      initialDocument as ProjectDocument,
-    )
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    initEditorStore(projectId, initialName, initialDocument as ProjectDocument)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   return <EditorLayout />
@@ -38,7 +34,6 @@ export default function EditorShell({
 // ─── Main layout (reads from store) ──────────────────────────────────────────
 
 function EditorLayout() {
-  const projectName = useEditorStore((s) => s.projectName)
   const projectId = useEditorStore((s) => s.projectId)
   const saveStatus = useEditorStore((s) => s.saveStatus)
   const undo = useEditorStore((s) => s.undo)
@@ -54,8 +49,14 @@ function EditorLayout() {
       const mac = navigator.platform.startsWith('Mac')
       const ctrl = mac ? e.metaKey : e.ctrlKey
       if (!ctrl) return
-      if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
-      if ((e.key === 'z' && e.shiftKey) || e.key === 'y') { e.preventDefault(); redo() }
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      }
+      if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        e.preventDefault()
+        redo()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -75,7 +76,13 @@ function EditorLayout() {
             className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
             aria-label="Kembali ke dashboard"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </a>
@@ -95,25 +102,43 @@ function EditorLayout() {
           <button
             type="button"
             onClick={() => setShowPublish(true)}
-            className="rounded-md bg-brand-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-600"
+            className="bg-brand-500 hover:bg-brand-600 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
           >
             Publish
           </button>
         </div>
       </header>
 
-      {showPublish && (
-        <PublishDialog projectId={projectId} onClose={() => setShowPublish(false)} />
-      )}
+      {showPublish && <PublishDialog projectId={projectId} onClose={() => setShowPublish(false)} />}
 
       {/* Editor body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left toolbar */}
         <aside className="flex w-16 flex-col items-center gap-4 border-r border-neutral-200 bg-white py-4">
-          <SidebarIcon label="Elemen" icon="✦" active={activePanel === 'elemen'} onClick={() => togglePanel('elemen')} />
-          <SidebarIcon label="Template" icon="⊞" active={activePanel === 'template'} onClick={() => togglePanel('template')} />
-          <SidebarIcon label="Aset" icon="📁" active={activePanel === 'aset'} onClick={() => togglePanel('aset')} />
-          <SidebarIcon label="Musik" icon="♪" active={activePanel === 'musik'} onClick={() => togglePanel('musik')} />
+          <SidebarIcon
+            label="Elemen"
+            icon="✦"
+            active={activePanel === 'elemen'}
+            onClick={() => togglePanel('elemen')}
+          />
+          <SidebarIcon
+            label="Template"
+            icon="⊞"
+            active={activePanel === 'template'}
+            onClick={() => togglePanel('template')}
+          />
+          <SidebarIcon
+            label="Aset"
+            icon="📁"
+            active={activePanel === 'aset'}
+            onClick={() => togglePanel('aset')}
+          />
+          <SidebarIcon
+            label="Musik"
+            icon="♪"
+            active={activePanel === 'musik'}
+            onClick={() => togglePanel('musik')}
+          />
         </aside>
 
         {/* Slide-in panel */}
@@ -148,8 +173,14 @@ function ProjectNameField() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); ref.current?.blur() }
-    if (e.key === 'Escape') { if (ref.current) ref.current.textContent = projectName; ref.current?.blur() }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      ref.current?.blur()
+    }
+    if (e.key === 'Escape') {
+      if (ref.current) ref.current.textContent = projectName
+      ref.current?.blur()
+    }
   }
 
   return (
@@ -161,7 +192,7 @@ function ProjectNameField() {
       aria-label="Nama kreasi"
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
-      className="max-w-[220px] truncate rounded px-1 text-sm font-medium text-neutral-900 outline-none focus:bg-neutral-50 focus:ring-1 focus:ring-brand-500"
+      className="focus:ring-brand-500 max-w-[220px] truncate rounded px-1 text-sm font-medium text-neutral-900 outline-none focus:bg-neutral-50 focus:ring-1"
     >
       {projectName}
     </span>
@@ -171,11 +202,11 @@ function ProjectNameField() {
 // ─── Save status badge ────────────────────────────────────────────────────────
 
 const statusMap: Record<SaveStatus, { label: string; className: string }> = {
-  saved:   { label: 'Tersimpan',   className: 'text-success-700' },
-  saving:  { label: 'Menyimpan…',  className: 'text-neutral-400' },
+  saved: { label: 'Tersimpan', className: 'text-success-700' },
+  saving: { label: 'Menyimpan…', className: 'text-neutral-400' },
   unsaved: { label: 'Belum tersimpan', className: 'text-warning-600' },
-  error:   { label: 'Gagal simpan', className: 'text-danger-600' },
-  offline: { label: 'Offline',     className: 'text-neutral-400' },
+  error: { label: 'Gagal simpan', className: 'text-danger-600' },
+  offline: { label: 'Offline', className: 'text-neutral-400' },
 }
 
 function SaveStatusBadge({ status }: { status: SaveStatus }) {
@@ -192,7 +223,6 @@ function SceneNavigator() {
   const addScene = useEditorStore((s) => s.addScene)
   const deleteScene = useEditorStore((s) => s.deleteScene)
   const duplicateScene = useEditorStore((s) => s.duplicateScene)
-  const zoom = useEditorStore((s) => s.zoom)
 
   const sorted = [...scenes].sort((a, b) => a.order - b.order)
   const THUMB_SCALE = 0.18
@@ -225,12 +255,19 @@ function SceneNavigator() {
                     height: scene.baseHeight * THUMB_SCALE * (152 / scene.baseWidth),
                   }}
                 >
-                  <div style={{ transform: `scale(${THUMB_SCALE * (152 / scene.baseWidth)})`, transformOrigin: 'top left' }}>
+                  <div
+                    style={{
+                      transform: `scale(${THUMB_SCALE * (152 / scene.baseWidth)})`,
+                      transformOrigin: 'top left',
+                    }}
+                  >
                     <SceneRenderer scene={scene} scale={1} />
                   </div>
                 </div>
                 <div className="px-2 py-1">
-                  <p className={`truncate text-xs font-medium ${isSelected ? 'text-brand-500' : 'text-neutral-700'}`}>
+                  <p
+                    className={`truncate text-xs font-medium ${isSelected ? 'text-brand-500' : 'text-neutral-700'}`}
+                  >
                     {scene.name}
                   </p>
                   <p className="text-[10px] text-neutral-400">#{index + 1}</p>
@@ -238,21 +275,14 @@ function SceneNavigator() {
               </button>
               {/* Context actions on hover */}
               <div className="absolute right-1 top-1 hidden gap-0.5 group-hover:flex">
-                <IconAction
-                  label="Duplikasi scene"
-                  onClick={() => duplicateScene(scene.id)}
-                >
+                <IconAction label="Duplikasi scene" onClick={() => duplicateScene(scene.id)}>
                   <svg viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3">
                     <rect x="3" y="5" width="8" height="8" rx="1.5" />
                     <path d="M6 3V2a1 1 0 011-1h6a1 1 0 011 1v7a1 1 0 01-1 1h-1" />
                   </svg>
                 </IconAction>
                 {scenes.length > 1 && (
-                  <IconAction
-                    label="Hapus scene"
-                    onClick={() => deleteScene(scene.id)}
-                    danger
-                  >
+                  <IconAction label="Hapus scene" onClick={() => deleteScene(scene.id)} danger>
                     <svg viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3">
                       <path d="M6.5 1h3a.5.5 0 010 1h-3a.5.5 0 010-1zM2 3.5A.5.5 0 012.5 3h11a.5.5 0 010 1h-.5v9a1 1 0 01-1 1h-7a1 1 0 01-1-1V4H2.5a.5.5 0 01-.5-.5z" />
                     </svg>
@@ -265,7 +295,7 @@ function SceneNavigator() {
         <button
           type="button"
           onClick={addScene}
-          className="mt-1 rounded-md border border-dashed border-neutral-200 px-2 py-2 text-xs text-neutral-400 transition-colors hover:border-brand-500 hover:text-brand-500"
+          className="hover:border-brand-500 hover:text-brand-500 mt-1 rounded-md border border-dashed border-neutral-200 px-2 py-2 text-xs text-neutral-400 transition-colors"
         >
           + Tambah Scene
         </button>
@@ -289,10 +319,13 @@ function IconAction({
     <button
       type="button"
       aria-label={label}
-      onClick={(e) => { e.stopPropagation(); onClick() }}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
       className={`rounded p-0.5 transition-colors ${
         danger
-          ? 'bg-white text-danger-600 hover:bg-danger-600 hover:text-white'
+          ? 'text-danger-600 hover:bg-danger-600 bg-white hover:text-white'
           : 'bg-white text-neutral-500 hover:bg-neutral-100'
       }`}
     >
@@ -341,12 +374,14 @@ function CanvasWorkspace() {
     <main
       ref={canvasRef}
       className="relative flex flex-1 flex-col items-center overflow-auto bg-neutral-100"
-      onClick={() => { if (!isDragging()) selectElement(null) }}
+      onClick={() => {
+        if (!isDragging()) selectElement(null)
+      }}
       onPointerMove={(e) => onPointerMove(e, liveUpdate)}
       onPointerUp={(e) => onPointerUp(e, liveUpdate)}
     >
       {/* Zoom toolbar */}
-      <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-panel">
+      <div className="shadow-panel absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1">
         <button
           type="button"
           aria-label="Zoom out"
@@ -380,7 +415,7 @@ function CanvasWorkspace() {
       <div className="flex flex-1 items-center justify-center p-8">
         {scene ? (
           <div
-            className="rounded-lg shadow-toolbar"
+            className="shadow-toolbar rounded-lg"
             style={{
               width: scene.baseWidth * zoom,
               height: scene.baseHeight * zoom,
@@ -419,7 +454,7 @@ function CanvasWorkspace() {
             />
           </div>
         ) : (
-          <div className="flex h-[844px] w-[390px] items-center justify-center rounded-lg bg-white shadow-toolbar">
+          <div className="shadow-toolbar flex h-[844px] w-[390px] items-center justify-center rounded-lg bg-white">
             <p className="text-sm text-neutral-400">Tambah scene pertama</p>
           </div>
         )}
@@ -482,7 +517,6 @@ function InspectorPanel() {
 
 function ElementInspector({
   element,
-  sceneId,
   onUpdate,
   onUpdateProps,
   onDelete,
@@ -490,7 +524,11 @@ function ElementInspector({
 }: {
   element: ElementNode
   sceneId: string
-  onUpdate: (patch: Partial<Pick<ElementNode, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'locked'>>) => void
+  onUpdate: (
+    patch: Partial<
+      Pick<ElementNode, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'locked'>
+    >,
+  ) => void
   onUpdateProps: (props: Record<string, unknown>) => void
   onDelete: () => void
   onReorderZ: (dir: 'up' | 'down' | 'front' | 'back') => void
@@ -506,7 +544,7 @@ function ElementInspector({
           type="button"
           onClick={onDelete}
           aria-label="Hapus elemen"
-          className="rounded-md p-1 text-danger-600 transition-colors hover:bg-red-50"
+          className="text-danger-600 rounded-md p-1 transition-colors hover:bg-red-50"
         >
           <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
             <path d="M6.5 1h3a.5.5 0 010 1h-3a.5.5 0 010-1zM2 3.5A.5.5 0 012.5 3h11a.5.5 0 010 1h-.5v9a1 1 0 01-1 1h-7a1 1 0 01-1-1V4H2.5a.5.5 0 01-.5-.5z" />
@@ -519,9 +557,22 @@ function ElementInspector({
         <div className="grid grid-cols-2 gap-2">
           <NumInput label="X" value={element.x} onChange={(v) => onUpdate({ x: v })} />
           <NumInput label="Y" value={element.y} onChange={(v) => onUpdate({ y: v })} />
-          <NumInput label="W" value={element.width} onChange={(v) => onUpdate({ width: Math.max(1, v) })} />
-          <NumInput label="H" value={element.height} onChange={(v) => onUpdate({ height: Math.max(1, v) })} />
-          <NumInput label="Rotasi" value={element.rotation} onChange={(v) => onUpdate({ rotation: v })} step={1} />
+          <NumInput
+            label="W"
+            value={element.width}
+            onChange={(v) => onUpdate({ width: Math.max(1, v) })}
+          />
+          <NumInput
+            label="H"
+            value={element.height}
+            onChange={(v) => onUpdate({ height: Math.max(1, v) })}
+          />
+          <NumInput
+            label="Rotasi"
+            value={element.rotation}
+            onChange={(v) => onUpdate({ rotation: v })}
+            step={1}
+          />
           <div className="flex items-center gap-2">
             <label className="flex cursor-pointer items-center gap-1.5 text-xs text-neutral-600">
               <input
@@ -544,7 +595,7 @@ function ElementInspector({
               key={dir}
               type="button"
               onClick={() => onReorderZ(dir)}
-              className="flex-1 rounded-md border border-neutral-200 py-1 text-xs text-neutral-600 transition-colors hover:border-brand-500 hover:text-brand-500"
+              className="hover:border-brand-500 hover:text-brand-500 flex-1 rounded-md border border-neutral-200 py-1 text-xs text-neutral-600 transition-colors"
             >
               {dir === 'back' ? '⤓' : dir === 'down' ? '↓' : dir === 'up' ? '↑' : '⤒'}
             </button>
@@ -574,16 +625,37 @@ function ElementPropsInspector({
             value={p.content}
             onChange={(e) => onUpdateProps({ content: e.target.value })}
             rows={3}
-            className="w-full resize-none rounded-md border border-neutral-200 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+            className="focus:border-brand-500 focus:ring-brand-500 w-full resize-none rounded-md border border-neutral-200 px-2 py-1.5 text-sm outline-none focus:ring-1"
           />
         </InspectorSection>
         <InspectorSection title="Tipografi">
           <div className="grid grid-cols-2 gap-2">
-            <NumInput label="Ukuran" value={p.fontSize ?? 16} onChange={(v) => onUpdateProps({ fontSize: v })} min={1} />
-            <NumInput label="Berat" value={p.fontWeight ?? 400} onChange={(v) => onUpdateProps({ fontWeight: v })} step={100} min={100} max={900} />
-            <NumInput label="Tinggi baris" value={p.lineHeight ?? 1.5} onChange={(v) => onUpdateProps({ lineHeight: v })} step={0.1} />
+            <NumInput
+              label="Ukuran"
+              value={p.fontSize ?? 16}
+              onChange={(v) => onUpdateProps({ fontSize: v })}
+              min={1}
+            />
+            <NumInput
+              label="Berat"
+              value={p.fontWeight ?? 400}
+              onChange={(v) => onUpdateProps({ fontWeight: v })}
+              step={100}
+              min={100}
+              max={900}
+            />
+            <NumInput
+              label="Tinggi baris"
+              value={p.lineHeight ?? 1.5}
+              onChange={(v) => onUpdateProps({ lineHeight: v })}
+              step={0.1}
+            />
           </div>
-          <ColorInput label="Warna teks" value={p.color} onChange={(v) => onUpdateProps({ color: v })} />
+          <ColorInput
+            label="Warna teks"
+            value={p.color}
+            onChange={(v) => onUpdateProps({ color: v })}
+          />
         </InspectorSection>
       </>
     )
@@ -599,14 +671,14 @@ function ElementPropsInspector({
           value={p.src ?? ''}
           onChange={(e) => onUpdateProps({ src: e.target.value })}
           placeholder="https://…"
-          className="mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none focus:border-brand-500"
+          className="focus:border-brand-500 mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none"
         />
         <label className="mt-2 block text-xs text-neutral-500">Alt text</label>
         <input
           type="text"
           value={p.alt ?? ''}
           onChange={(e) => onUpdateProps({ alt: e.target.value })}
-          className="mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none focus:border-brand-500"
+          className="focus:border-brand-500 mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none"
         />
       </InspectorSection>
     )
@@ -616,13 +688,31 @@ function ElementPropsInspector({
     const p = element.props
     return (
       <InspectorSection title="Bentuk">
-        <ColorInput label="Isi" value={p.fill ?? '#000000'} onChange={(v) => onUpdateProps({ fill: v })} />
-        <ColorInput label="Garis tepi" value={p.stroke ?? ''} onChange={(v) => onUpdateProps({ stroke: v || undefined })} />
+        <ColorInput
+          label="Isi"
+          value={p.fill ?? '#000000'}
+          onChange={(v) => onUpdateProps({ fill: v })}
+        />
+        <ColorInput
+          label="Garis tepi"
+          value={p.stroke ?? ''}
+          onChange={(v) => onUpdateProps({ stroke: v || undefined })}
+        />
         {p.stroke && (
-          <NumInput label="Tebal garis" value={p.strokeWidth ?? 1} onChange={(v) => onUpdateProps({ strokeWidth: v })} min={0} />
+          <NumInput
+            label="Tebal garis"
+            value={p.strokeWidth ?? 1}
+            onChange={(v) => onUpdateProps({ strokeWidth: v })}
+            min={0}
+          />
         )}
-        {(p.shape === 'rectangle') && (
-          <NumInput label="Sudut bulat" value={p.borderRadius ?? 0} onChange={(v) => onUpdateProps({ borderRadius: v })} min={0} />
+        {p.shape === 'rectangle' && (
+          <NumInput
+            label="Sudut bulat"
+            value={p.borderRadius ?? 0}
+            onChange={(v) => onUpdateProps({ borderRadius: v })}
+            min={0}
+          />
         )}
       </InspectorSection>
     )
@@ -637,7 +727,7 @@ function ElementPropsInspector({
           type="text"
           value={p.label}
           onChange={(e) => onUpdateProps({ label: e.target.value })}
-          className="mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none focus:border-brand-500"
+          className="focus:border-brand-500 mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none"
         />
         <label className="mt-2 block text-xs text-neutral-500">URL tujuan</label>
         <input
@@ -645,11 +735,19 @@ function ElementPropsInspector({
           value={p.url}
           onChange={(e) => onUpdateProps({ url: e.target.value })}
           placeholder="https://…"
-          className="mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none focus:border-brand-500"
+          className="focus:border-brand-500 mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none"
         />
         <div className="mt-2 grid grid-cols-2 gap-2">
-          <ColorInput label="Warna tombol" value={p.backgroundColor ?? '#6D5EF7'} onChange={(v) => onUpdateProps({ backgroundColor: v })} />
-          <ColorInput label="Warna teks" value={p.textColor ?? '#FFFFFF'} onChange={(v) => onUpdateProps({ textColor: v })} />
+          <ColorInput
+            label="Warna tombol"
+            value={p.backgroundColor ?? '#6D5EF7'}
+            onChange={(v) => onUpdateProps({ backgroundColor: v })}
+          />
+          <ColorInput
+            label="Warna teks"
+            value={p.textColor ?? '#FFFFFF'}
+            onChange={(v) => onUpdateProps({ textColor: v })}
+          />
         </div>
       </InspectorSection>
     )
@@ -677,10 +775,20 @@ function SceneInspector({
           onChange={(e) => {
             const type = e.target.value as Scene['background']['type']
             if (type === 'color') onUpdateBackground({ type: 'color', color: '#FFFFFF' })
-            else if (type === 'gradient') onUpdateBackground({ type: 'gradient', gradient: { direction: 135, stops: [{ color: '#6D5EF7', position: 0 }, { color: '#FF7AA2', position: 100 }] } })
+            else if (type === 'gradient')
+              onUpdateBackground({
+                type: 'gradient',
+                gradient: {
+                  direction: 135,
+                  stops: [
+                    { color: '#6D5EF7', position: 0 },
+                    { color: '#FF7AA2', position: 100 },
+                  ],
+                },
+              })
             else onUpdateBackground({ type: 'image', src: '', objectFit: 'cover' })
           }}
-          className="mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none focus:border-brand-500"
+          className="focus:border-brand-500 mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none"
         >
           <option value="color">Warna solid</option>
           <option value="gradient">Gradien</option>
@@ -699,7 +807,9 @@ function SceneInspector({
             <NumInput
               label="Arah (deg)"
               value={bg.gradient.direction}
-              onChange={(v) => onUpdateBackground({ ...bg, gradient: { ...bg.gradient, direction: v } })}
+              onChange={(v) =>
+                onUpdateBackground({ ...bg, gradient: { ...bg.gradient, direction: v } })
+              }
               min={0}
               max={360}
             />
@@ -731,19 +841,14 @@ function SceneInspector({
               value={bg.src ?? ''}
               onChange={(e) => onUpdateBackground({ ...bg, src: e.target.value })}
               placeholder="https://…"
-              className="mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none focus:border-brand-500"
+              className="focus:border-brand-500 mt-1 w-full rounded-md border border-neutral-200 px-2 py-1.5 text-xs outline-none"
             />
           </>
         )}
       </InspectorSection>
 
       <InspectorSection title="Ukuran">
-        <NumInput
-          label="Tinggi (px)"
-          value={scene.baseHeight}
-          onChange={() => {}}
-          disabled
-        />
+        <NumInput label="Tinggi (px)" value={scene.baseHeight} onChange={() => {}} disabled />
         <p className="mt-1 text-[10px] text-neutral-400">Lebar selalu 390px</p>
       </InspectorSection>
     </div>
@@ -755,7 +860,9 @@ function SceneInspector({
 function InspectorSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="px-4 py-3">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{title}</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+        {title}
+      </p>
       {children}
     </div>
   )
@@ -789,7 +896,7 @@ function NumInput({
         max={max}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full rounded-md border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+        className="focus:border-brand-500 focus:ring-brand-500 w-full rounded-md border border-neutral-200 px-2 py-1 text-xs outline-none focus:ring-1 disabled:opacity-50"
       />
     </label>
   )
@@ -819,7 +926,7 @@ function ColorInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           maxLength={9}
-          className="w-20 rounded-md border border-neutral-200 px-1.5 py-0.5 text-xs outline-none focus:border-brand-500"
+          className="focus:border-brand-500 w-20 rounded-md border border-neutral-200 px-1.5 py-0.5 text-xs outline-none"
         />
       </div>
     </label>
@@ -858,7 +965,13 @@ function SidebarIcon({
 
 // ─── Sidebar panel content ─────────────────────────────────────────────────────
 
-function SidebarPanelContent({ panel, onClose }: { panel: NonNullable<SidebarPanel>; onClose: () => void }) {
+function SidebarPanelContent({
+  panel,
+  onClose,
+}: {
+  panel: NonNullable<SidebarPanel>
+  onClose: () => void
+}) {
   const titles: Record<NonNullable<SidebarPanel>, string> = {
     elemen: 'Elemen',
     template: 'Template',
@@ -867,7 +980,7 @@ function SidebarPanelContent({ panel, onClose }: { panel: NonNullable<SidebarPan
   }
 
   return (
-    <aside className="flex w-64 flex-col border-r border-neutral-200 bg-white overflow-hidden">
+    <aside className="flex w-64 flex-col overflow-hidden border-r border-neutral-200 bg-white">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-neutral-100 px-3">
         <span className="text-xs font-semibold text-neutral-700">{titles[panel]}</span>
         <button
@@ -876,7 +989,13 @@ function SidebarPanelContent({ panel, onClose }: { panel: NonNullable<SidebarPan
           className="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
           aria-label="Tutup panel"
         >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg
+            className="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -901,20 +1020,76 @@ const ELEMENT_TYPES: { type: ElementNode['type']; label: string; icon: string }[
 ]
 
 function makeDefaultElement(type: ElementNode['type']): ElementNode {
-  const base = { id: crypto.randomUUID(), x: 60, y: 120, width: 270, height: 60, zIndex: 1, locked: false, rotation: 0 }
+  const base = {
+    id: crypto.randomUUID(),
+    x: 60,
+    y: 120,
+    width: 270,
+    height: 60,
+    zIndex: 1,
+    locked: false,
+    rotation: 0,
+  }
   switch (type) {
     case 'text':
-      return { ...base, type: 'text', props: { content: 'Tulis teks...', fontSize: 24, fontWeight: 400, color: '#17171C', textAlign: 'center', lineHeight: 1.4 } }
+      return {
+        ...base,
+        type: 'text',
+        props: {
+          content: 'Tulis teks...',
+          fontSize: 24,
+          fontWeight: 400,
+          color: '#17171C',
+          textAlign: 'center',
+          lineHeight: 1.4,
+        },
+      }
     case 'image':
-      return { ...base, type: 'image', width: 200, height: 200, props: { src: '', alt: 'Gambar', decorative: false, objectFit: 'cover' } }
+      return {
+        ...base,
+        type: 'image',
+        width: 200,
+        height: 200,
+        props: { src: '', alt: 'Gambar', decorative: false, objectFit: 'cover' },
+      }
     case 'shape':
-      return { ...base, type: 'shape', width: 120, height: 120, props: { shape: 'rectangle', fill: '#6D5EF7', borderRadius: 12 } }
+      return {
+        ...base,
+        type: 'shape',
+        width: 120,
+        height: 120,
+        props: { shape: 'rectangle', fill: '#6D5EF7', borderRadius: 12 },
+      }
     case 'icon':
-      return { ...base, type: 'icon', width: 48, height: 48, props: { iconName: 'heart', color: '#6D5EF7', size: 32 } }
+      return {
+        ...base,
+        type: 'icon',
+        width: 48,
+        height: 48,
+        props: { iconName: 'heart', color: '#6D5EF7', size: 32 },
+      }
     case 'button':
-      return { ...base, type: 'button', height: 48, props: { label: 'Klik di sini', url: '#', variant: 'primary' as const, backgroundColor: '#6D5EF7', textColor: '#FFFFFF', borderRadius: 24 } }
+      return {
+        ...base,
+        type: 'button',
+        height: 48,
+        props: {
+          label: 'Klik di sini',
+          url: '#',
+          variant: 'primary' as const,
+          backgroundColor: '#6D5EF7',
+          textColor: '#FFFFFF',
+          borderRadius: 24,
+        },
+      }
     case 'audioControl':
-      return { ...base, type: 'audioControl', width: 160, height: 44, props: { label: 'Putar Musik', compact: false } }
+      return {
+        ...base,
+        type: 'audioControl',
+        width: 160,
+        height: 44,
+        props: { label: 'Putar Musik', compact: false },
+      }
   }
 }
 
@@ -935,7 +1110,7 @@ function ElemenPanel() {
           type="button"
           onClick={() => handleAdd(type)}
           disabled={!selectedSceneId}
-          className="flex flex-col items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-neutral-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 flex flex-col items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-neutral-700 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
         >
           <span className="text-xl leading-none">{icon}</span>
           <span className="text-[11px] font-medium">{label}</span>

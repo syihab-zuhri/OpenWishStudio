@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @openwish/web dev",
     "build": "pnpm --filter @openwish/web build",
-    "lint": "pnpm -r lint",
+    "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit",
@@ -19,8 +19,12 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "^15.3.4",
+    "@openwish/config": "workspace:*",
+    "eslint": "^9.0.0",
     "husky": "^9.0.11",
     "lint-staged": "^15.2.0",
+    "prettier": "^3.0.0",
     "turbo": "^2.0.0"
   },
   "lint-staged": {

@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { ProjectCardMenu } from './_components/ProjectActions'
 
 export default async function DashboardPage() {
@@ -46,12 +47,12 @@ export default async function DashboardPage() {
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-neutral-900">Kreasimu</h1>
-          <a
+          <Link
             href="/editor/new"
-            className="rounded-full bg-brand-500 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-600"
+            className="bg-brand-500 hover:bg-brand-600 rounded-full px-5 py-2 text-sm font-medium text-white transition-colors"
           >
             + Buat Baru
-          </a>
+          </Link>
         </div>
 
         {!projects || projects.length === 0 ? (
@@ -74,12 +75,12 @@ function EmptyState() {
       <div className="mb-3 text-4xl">🎨</div>
       <h2 className="text-base font-semibold text-neutral-900">Buat kreasi pertama</h2>
       <p className="mt-1 text-sm text-neutral-500">Mulai dari template atau kanvas kosong.</p>
-      <a
+      <Link
         href="/editor/new"
-        className="mt-5 rounded-full bg-brand-500 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-600"
+        className="bg-brand-500 hover:bg-brand-600 mt-5 rounded-full px-6 py-2.5 text-sm font-medium text-white transition-colors"
       >
         Mulai Berkreasi
-      </a>
+      </Link>
     </div>
   )
 }
@@ -108,7 +109,7 @@ function ProjectCard({
   })
 
   return (
-    <div className="group flex flex-col rounded-lg border border-neutral-200 bg-white transition-shadow hover:shadow-panel">
+    <div className="hover:shadow-panel group flex flex-col rounded-lg border border-neutral-200 bg-white transition-shadow">
       {/* Thumbnail placeholder */}
       <a href={`/editor/${project.id}`} className="block flex-1">
         <div className="flex h-40 items-center justify-center rounded-t-lg bg-neutral-50">

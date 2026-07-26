@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore, initEditorStore } from './editorStore'
-import { createDefaultDocument, createDefaultScene } from '@openwish/project-schema'
+import { createDefaultDocument } from '@openwish/project-schema'
 import { v4 as uuidv4 } from 'uuid'
 import type { ElementNode } from '@openwish/project-schema'
 
@@ -102,7 +102,7 @@ describe('reorderScene', () => {
   it('moves a scene to the correct index and reassigns order values', () => {
     getState().addScene()
     getState().addScene()
-    const [a, , c] = getState().document.scenes
+    const [, , c] = getState().document.scenes
     getState().reorderScene(c.id, 0) // bring last scene to front
     const reordered = getState().document.scenes
     expect(reordered[0].id).toBe(c.id)
