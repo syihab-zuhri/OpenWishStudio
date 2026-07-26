@@ -49,15 +49,24 @@ export const ImageElementPropsSchema = z.object({
 
 export const ShapeElementPropsSchema = z.object({
   shape: z.enum(['rectangle', 'circle', 'triangle', 'star', 'heart']),
-  fill: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
-  stroke: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
+  fill: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/)
+    .optional(),
+  stroke: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/)
+    .optional(),
   strokeWidth: z.number().min(0).max(100).optional(),
   borderRadius: z.number().min(0).max(50).optional(),
 })
 
 export const IconElementPropsSchema = z.object({
   iconName: z.string().max(100),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/)
+    .optional(),
   size: z.number().min(8).max(512).optional(),
 })
 
@@ -65,8 +74,14 @@ export const ButtonElementPropsSchema = z.object({
   label: z.string().max(200),
   url: SafeUrlSchema,
   variant: z.enum(['primary', 'secondary', 'ghost']).default('primary'),
-  backgroundColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
-  textColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
+  backgroundColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/)
+    .optional(),
+  textColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/)
+    .optional(),
   borderRadius: z.number().min(0).max(50).optional(),
 })
 
@@ -138,12 +153,15 @@ export const BackgroundSchema = z.discriminatedUnion('type', [
     type: z.literal('gradient'),
     gradient: z.object({
       direction: z.number().min(0).max(360),
-      stops: z.array(
-        z.object({
-          color: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/),
-          position: z.number().min(0).max(100),
-        }),
-      ).min(2).max(10),
+      stops: z
+        .array(
+          z.object({
+            color: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/),
+            position: z.number().min(0).max(100),
+          }),
+        )
+        .min(2)
+        .max(10),
     }),
   }),
   z.object({
@@ -171,6 +189,12 @@ export const SceneSchema = z.object({
 export const SoundtrackSchema = z.object({
   assetId: z.string().uuid().optional(),
   libraryItemId: z.string().uuid().optional(),
+  // URL publik file audio, di-resolve saat track dipilih di editor. Disimpan di
+  // dokumen supaya halaman publik (anon, tanpa akses tabel library) bisa memutar.
+  src: SafeUrlSchema.optional(),
+  title: z.string().max(500).optional(),
+  // Teks atribusi lisensi (mis. CC-BY) — wajib ditampilkan di halaman publik.
+  attribution: z.string().max(1000).optional(),
   volume: z.number().min(0).max(1).default(1),
   loop: z.boolean().default(true),
 })

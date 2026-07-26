@@ -1,6 +1,7 @@
 import { type NextRequest } from 'next/server'
 import { ok, serverError, badRequest } from '@/lib/api/response'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { storagePublicUrl } from '@/lib/storage-url'
 
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
@@ -12,7 +13,9 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('music_library_items')
-    .select('id, title, artist, duration_ms, license_code, license_url, attribution_text, created_at')
+    .select(
+      'id, title, artist, duration_ms, storage_key, license_code, license_url, attribution_text, created_at',
+    )
     .eq('status', 'active')
     .order('id', { ascending: true })
     .limit(limit + 1)
@@ -46,7 +49,13 @@ export async function GET(request: NextRequest) {
   }
 
   const hasMore = data.length > limit
-  const items = hasMore ? data.slice(0, limit) : data
+  const page = hasMore ? data.slice(0, limit) : data
+
+  // storage_key tetap detail internal; klien menerima URL publik siap pakai.
+  const items = page.map(({ storage_key, ...rest }) => ({
+    ...rest,
+    url: storagePublicUrl('music-library', storage_key),
+  }))
 
   let nextCursor: string | null = null
   if (hasMore) {

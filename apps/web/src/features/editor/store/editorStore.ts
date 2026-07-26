@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { ProjectDocument, Scene, ElementNode } from '@openwish/project-schema'
+import type { ProjectDocument, Scene, ElementNode, Soundtrack } from '@openwish/project-schema'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,13 +31,29 @@ interface EditorActions {
   duplicateScene: (sceneId: string) => void
   reorderScene: (sceneId: string, toIndex: number) => void
   updateSceneBackground: (sceneId: string, background: Scene['background']) => void
+  addScenes: (scenes: Scene[]) => void
+  setSoundtrack: (soundtrack: Soundtrack | undefined) => void
   selectElement: (elementId: string | null) => void
   addElement: (sceneId: string, element: ElementNode) => void
-  updateElement: (sceneId: string, elementId: string, patch: Partial<Pick<ElementNode, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'locked'>>) => void
-  commitElementDrag: (sceneId: string, elementId: string, patch: Partial<Pick<ElementNode, 'x' | 'y' | 'width' | 'height'>>) => void
+  updateElement: (
+    sceneId: string,
+    elementId: string,
+    patch: Partial<
+      Pick<ElementNode, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'locked'>
+    >,
+  ) => void
+  commitElementDrag: (
+    sceneId: string,
+    elementId: string,
+    patch: Partial<Pick<ElementNode, 'x' | 'y' | 'width' | 'height'>>,
+  ) => void
   updateElementProps: (sceneId: string, elementId: string, props: Record<string, unknown>) => void
   deleteElement: (sceneId: string, elementId: string) => void
-  reorderElementZ: (sceneId: string, elementId: string, direction: 'up' | 'down' | 'front' | 'back') => void
+  reorderElementZ: (
+    sceneId: string,
+    elementId: string,
+    direction: 'up' | 'down' | 'front' | 'back',
+  ) => void
   setZoom: (zoom: number) => void
   undo: () => void
   redo: () => void
@@ -202,6 +218,32 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
     }))
   },
 
+  addScenes(scenes) {
+    if (!scenes.length) return
+    set((s) => {
+      const start = s.document.scenes.length
+      const withOrder = scenes.map((sc, i) => ({ ...sc, order: start + i }))
+      return {
+        ...withPushedHistory(s),
+        document: { ...s.document, scenes: [...s.document.scenes, ...withOrder] },
+        selectedSceneId: withOrder[0].id,
+        selectedElementId: null,
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  setSoundtrack(soundtrack) {
+    set((s) => ({
+      ...withPushedHistory(s),
+      document: {
+        ...s.document,
+        project: { ...s.document.project, soundtrack },
+      },
+      saveStatus: 'unsaved' as SaveStatus,
+    }))
+  },
+
   // ── Element selection ────────────────────────────────────────────────────────
 
   selectElement(elementId) {
@@ -279,10 +321,14 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         const idx = sorted.findIndex((el) => el.id === elementId)
         if (idx === -1) return sc
         if (direction === 'front') {
-          sorted.forEach((el, i) => { el.zIndex = i })
+          sorted.forEach((el, i) => {
+            el.zIndex = i
+          })
           sorted[idx].zIndex = sorted.length
         } else if (direction === 'back') {
-          sorted.forEach((el, i) => { el.zIndex = i + 1 })
+          sorted.forEach((el, i) => {
+            el.zIndex = i + 1
+          })
           sorted[idx].zIndex = 0
         } else if (direction === 'up' && idx < sorted.length - 1) {
           const tmp = sorted[idx].zIndex
@@ -318,9 +364,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         past: newPast,
         future: [{ document: cloneDoc(currentDoc) }, ...s.future],
         document: frame.document,
-        selectedSceneId: sceneExists
-          ? s.selectedSceneId
-          : (frame.document.scenes[0]?.id ?? null),
+        selectedSceneId: sceneExists ? s.selectedSceneId : (frame.document.scenes[0]?.id ?? null),
         selectedElementId: null,
         saveStatus: 'unsaved' as SaveStatus,
       }
@@ -342,11 +386,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
 
 // ─── Init helper ──────────────────────────────────────────────────────────────
 
-export function initEditorStore(
-  projectId: string,
-  projectName: string,
-  document: ProjectDocument,
-) {
+export function initEditorStore(projectId: string, projectName: string, document: ProjectDocument) {
   useEditorStore.setState({
     projectId,
     projectName,

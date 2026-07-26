@@ -2,6 +2,7 @@ import { type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/api/auth'
 import { ok, serverError, badRequest } from '@/lib/api/response'
+import { storagePublicUrl } from '@/lib/storage-url'
 
 const CursorSchema = z.object({
   created_at: z.string().datetime({ offset: true }),
@@ -20,7 +21,9 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('assets')
-    .select('id, original_name, size_bytes, mime_type, kind, status, storage_key, project_id, created_at')
+    .select(
+      'id, original_name, size_bytes, mime_type, kind, status, storage_key, project_id, created_at',
+    )
     .eq('owner_id', user!.id)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -56,7 +59,12 @@ export async function GET(request: NextRequest) {
   }
 
   const hasMore = data.length > limit
-  const items = hasMore ? data.slice(0, limit) : data
+  const page = hasMore ? data.slice(0, limit) : data
+
+  const items = page.map((asset) => ({
+    ...asset,
+    url: storagePublicUrl('assets', asset.storage_key),
+  }))
 
   let nextCursor: string | null = null
   if (hasMore) {

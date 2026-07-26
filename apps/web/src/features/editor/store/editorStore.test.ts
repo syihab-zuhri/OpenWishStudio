@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore, initEditorStore } from './editorStore'
 import { createDefaultDocument } from '@openwish/project-schema'
 import { v4 as uuidv4 } from 'uuid'
-import type { ElementNode } from '@openwish/project-schema'
+import type { ElementNode, Scene } from '@openwish/project-schema'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -217,5 +217,72 @@ describe('setZoom', () => {
   it('accepts value within range', () => {
     getState().setZoom(1.5)
     expect(getState().zoom).toBe(1.5)
+  })
+})
+
+// ─── addScenes (template insert) ──────────────────────────────────────────────
+
+function makeScene(order: number): Scene {
+  return {
+    id: uuidv4(),
+    name: `Template ${order}`,
+    order,
+    baseWidth: 390,
+    baseHeight: 844,
+    background: { type: 'color', color: '#FFEEDD' },
+    elements: [],
+  }
+}
+
+describe('addScenes', () => {
+  it('appends scenes with sequential order and selects the first new scene', () => {
+    const before = getState().document.scenes.length
+    const incoming = [makeScene(0), makeScene(1)]
+    getState().addScenes(incoming)
+    const after = getState()
+    expect(after.document.scenes.length).toBe(before + 2)
+    after.document.scenes.forEach((sc, i) => {
+      expect(sc.order).toBe(i)
+    })
+    expect(after.selectedSceneId).toBe(incoming[0].id)
+  })
+
+  it('pushes history and can be undone', () => {
+    const before = getState().document.scenes.length
+    getState().addScenes([makeScene(0)])
+    getState().undo()
+    expect(getState().document.scenes.length).toBe(before)
+  })
+
+  it('does nothing for an empty array', () => {
+    const pastLen = getState().past.length
+    getState().addScenes([])
+    expect(getState().past.length).toBe(pastLen)
+  })
+})
+
+// ─── setSoundtrack ────────────────────────────────────────────────────────────
+
+describe('setSoundtrack', () => {
+  const track = {
+    libraryItemId: uuidv4(),
+    src: 'https://example.com/track.mp3',
+    title: 'Lagu Uji',
+    volume: 0.8,
+    loop: true,
+  }
+
+  it('stores soundtrack on the project and marks unsaved', () => {
+    getState().setSoundtrack(track)
+    expect(getState().document.project.soundtrack).toEqual(track)
+    expect(getState().saveStatus).toBe('unsaved')
+  })
+
+  it('clears soundtrack when undefined and can be undone', () => {
+    getState().setSoundtrack(track)
+    getState().setSoundtrack(undefined)
+    expect(getState().document.project.soundtrack).toBeUndefined()
+    getState().undo()
+    expect(getState().document.project.soundtrack).toEqual(track)
   })
 })

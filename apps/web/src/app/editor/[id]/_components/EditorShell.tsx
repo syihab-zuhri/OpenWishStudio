@@ -11,6 +11,7 @@ import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 import { useDrag } from '@/features/editor/hooks/useDrag'
 import { useAutosave } from '@/features/editor/hooks/useAutosave'
 import { PublishDialog } from './PublishDialog'
+import { TemplatePanel, AsetPanel, MusikPanel } from './EditorPanels'
 
 type SidebarPanel = 'elemen' | 'template' | 'aset' | 'musik' | null
 
@@ -1158,7 +1159,9 @@ function SidebarPanelContent({
 /** Isi panel — dipakai aside desktop dan bottom sheet mobile. */
 function PanelBody({ panel }: { panel: NonNullable<SidebarPanel> }) {
   if (panel === 'elemen') return <ElemenPanel />
-  return <ComingSoonPanel />
+  if (panel === 'template') return <TemplatePanel />
+  if (panel === 'aset') return <AsetPanel />
+  return <MusikPanel />
 }
 
 // ─── Elemen panel ─────────────────────────────────────────────────────────────
@@ -1269,18 +1272,6 @@ function ElemenPanel() {
           <span className="text-[11px] font-medium">{label}</span>
         </button>
       ))}
-    </div>
-  )
-}
-
-// ─── Coming soon panel ────────────────────────────────────────────────────────
-
-function ComingSoonPanel() {
-  return (
-    <div className="flex flex-col items-center gap-2 pt-10 text-center">
-      <span className="text-3xl">🚧</span>
-      <p className="text-text-secondary text-xs font-medium">Segera hadir</p>
-      <p className="text-text-muted text-[11px]">Fitur ini sedang dalam pengembangan.</p>
     </div>
   )
 }

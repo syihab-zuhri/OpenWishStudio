@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import type { ProjectDocument } from '@openwish/project-schema'
 import { SceneStack } from '@/features/viewer/components/SceneStack'
+import { SoundtrackPlayer } from '@/features/viewer/components/SoundtrackPlayer'
 
 interface Props {
   projectId: string
@@ -12,9 +13,12 @@ interface Props {
 }
 
 export function DraftPreview({ projectId, projectName, document }: Props) {
+  const soundtrack = document.project.soundtrack
   const [audioEnabled, setAudioEnabled] = useState(false)
-  const [showAudioPrompt, setShowAudioPrompt] = useState(() =>
-    document.scenes.some((sc) => sc.elements.some((el) => el.type === 'audioControl')),
+  const [showAudioPrompt, setShowAudioPrompt] = useState(
+    () =>
+      Boolean(soundtrack?.src) ||
+      document.scenes.some((sc) => sc.elements.some((el) => el.type === 'audioControl')),
   )
 
   const handleEnableAudio = useCallback(() => {
@@ -98,14 +102,19 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
         <SceneStack scenes={document.scenes} audioEnabled={audioEnabled} />
       </main>
 
-      <footer className="text-text-muted py-6 text-center text-xs">
-        Dibuat dengan{' '}
-        <Link
-          href="/"
-          className="text-primary hover:text-primary-hover underline underline-offset-2"
-        >
-          OpenWish Studio
-        </Link>
+      {soundtrack?.src && <SoundtrackPlayer soundtrack={soundtrack} enabled={audioEnabled} />}
+
+      <footer className="text-text-muted space-y-1 px-4 py-6 text-center text-xs">
+        {soundtrack?.attribution && <p className="text-[10px]">{soundtrack.attribution}</p>}
+        <p>
+          Dibuat dengan{' '}
+          <Link
+            href="/"
+            className="text-primary hover:text-primary-hover underline underline-offset-2"
+          >
+            OpenWish Studio
+          </Link>
+        </p>
       </footer>
     </div>
   )
