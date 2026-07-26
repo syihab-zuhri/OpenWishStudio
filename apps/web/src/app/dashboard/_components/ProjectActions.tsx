@@ -260,8 +260,11 @@ function DeleteDialog({
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const isPublished = project.status === 'published'
 
   function submit() {
+    if (!confirmed) return
     startTransition(async () => {
       const res = await fetch(`/api/v1/projects/${project.id}`, { method: 'DELETE' })
       if (!res.ok) {
@@ -275,17 +278,44 @@ function DeleteDialog({
   return (
     <Dialog title="Hapus Kreasi" onClose={onClose}>
       <p className="text-text-secondary text-sm">
-        Hapus <strong className="text-text-primary">{project.name}</strong>? Kreasi yang sudah
-        dipublish akan langsung tidak tersedia.
+        Hapus <strong className="text-text-primary">{project.name}</strong>? Tindakan ini tidak
+        dapat dibatalkan.
       </p>
+
+      {isPublished && (
+        <div className="border-warning/40 bg-warning-subtle mt-3 rounded-md border px-3 py-2.5 text-xs">
+          <p className="text-warning font-semibold uppercase tracking-[0.08em]">
+            Kreasi ini sudah dipublikasikan
+          </p>
+          <p className="text-text-secondary mt-1">
+            Menghapusnya juga menonaktifkan tautan yang sudah dibagikan — penerima tidak akan bisa
+            membukanya lagi.
+          </p>
+        </div>
+      )}
+
+      <label className="text-text-secondary mt-3 flex cursor-pointer items-start gap-2 text-xs">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(e) => setConfirmed(e.target.checked)}
+          className="accent-error mt-0.5"
+        />
+        <span>
+          {isPublished
+            ? 'Saya mengerti tautan publikasi akan mati, dan tetap ingin menghapus kreasi ini.'
+            : 'Saya yakin ingin menghapus kreasi ini secara permanen.'}
+        </span>
+      </label>
+
       {error && <p className="text-error mt-2 text-xs">{error}</p>}
       <DialogActions>
         <CancelButton onClick={onClose} />
         <button
           type="button"
-          disabled={isPending}
+          disabled={isPending || !confirmed}
           onClick={submit}
-          className="bg-error text-text-on-primary hover:bg-error/85 rounded-sm px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+          className="bg-error text-text-on-primary hover:bg-error/85 rounded-sm px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isPending ? 'Menghapus…' : 'Hapus'}
         </button>

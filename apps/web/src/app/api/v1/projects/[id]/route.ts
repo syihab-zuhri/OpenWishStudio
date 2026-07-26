@@ -64,6 +64,20 @@ export async function DELETE(_request: NextRequest, { params }: { params: Params
   // menolak baris yang deleted_at-nya terisi, sehingga update via klien user
   // selalu gagal RLS. Kepemilikan sudah diverifikasi fetchOwnedProject di atas.
   const serviceClient = await createSupabaseServiceClient()
+
+  // Matikan halaman publik lebih dulu — tanpa ini, tautan yang sudah dibagikan
+  // tetap hidup sebagai halaman yatim setelah kreasinya dihapus.
+  const { error: unpubError } = await serviceClient
+    .from('published_pages')
+    .update({ status: 'unpublished' })
+    .eq('project_id', id)
+    .eq('status', 'published')
+
+  if (unpubError) {
+    console.error('DELETE /api/v1/projects/[id] unpublish:', unpubError.message)
+    return serverError()
+  }
+
   const { error: dbError } = await serviceClient
     .from('projects')
     .update({ deleted_at: new Date().toISOString() })
@@ -74,6 +88,15 @@ export async function DELETE(_request: NextRequest, { params }: { params: Params
     console.error('DELETE /api/v1/projects/[id]:', dbError.message)
     return serverError()
   }
+
+  await serviceClient.from('audit_logs').insert({
+    actor_id: user!.id,
+    created_by: user!.id,
+    action: 'project.delete',
+    target_type: 'project',
+    target_id: id,
+    metadata: { hadPublishedPage: existing.status === 'published' },
+  })
 
   return noContent()
 }
