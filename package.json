@@ -15,7 +15,7 @@
     "db:stop": "supabase stop",
     "db:migrate": "supabase db push",
     "db:reset": "supabase db reset",
-    "db:generate-types": "supabase gen types typescript --project-id qoqtfnajpwpwgtqlousl > packages/project-schema/src/database.types.ts",
+    "db:generate-types": "node scripts/generate-db-types.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

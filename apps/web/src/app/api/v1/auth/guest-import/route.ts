@@ -3,8 +3,11 @@ import { z } from 'zod'
 import { ProjectDocumentSchema } from '@openwish/project-schema'
 import { requireAuth } from '@/lib/api/auth'
 import { ok, created, serverError, unprocessable } from '@/lib/api/response'
+import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
+
+const RATE_LIMIT = { name: 'guest-import', max: 10, windowSeconds: 3600 }
 
 const GuestImportSchema = z.object({
   // Was z.unknown(): unvalidated JSON stored here reached the public renderer
@@ -17,6 +20,9 @@ const GuestImportSchema = z.object({
 export async function POST(request: NextRequest) {
   const { user, supabase, error } = await requireAuth()
   if (error) return error
+
+  const limited = await enforceRateLimit(RATE_LIMIT, byUser(user!.id))
+  if (limited) return limited
 
   const contentLength = request.headers.get('content-length')
   if (contentLength && Number(contentLength) > MAX_DOCUMENT_BYTES) {

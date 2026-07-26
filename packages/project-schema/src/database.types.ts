@@ -384,6 +384,24 @@ export type Database = {
           },
         ]
       }
+      rate_limits: {
+        Row: {
+          bucket: string
+          count: number
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          window_start?: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
       reports: {
         Row: {
           created_at: string
@@ -499,7 +517,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      check_rate_limit: {
+        Args: { p_bucket: string; p_max: number; p_window_seconds: number }
+        Returns: boolean
+      }
+      current_user_role: {
+        Args: never
+        Returns: Database["public"]["Enums"]["user_role"]
+      }
+      prune_rate_limits: {
+        Args: { p_older_than_seconds?: number }
+        Returns: number
+      }
     }
     Enums: {
       asset_kind: "image" | "audio"

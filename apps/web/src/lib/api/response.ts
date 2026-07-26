@@ -36,6 +36,13 @@ export function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
 }
 
+export function tooManyRequests(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { error: 'Terlalu banyak permintaan. Coba lagi sebentar lagi.' },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+  )
+}
+
 export function serverError(message = 'Terjadi kesalahan server.') {
   return NextResponse.json({ error: message }, { status: 500 })
 }

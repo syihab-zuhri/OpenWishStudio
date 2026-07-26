@@ -3,9 +3,14 @@ import { z } from 'zod'
 import { ProjectDocumentSchema } from '@openwish/project-schema'
 import { requireAuth } from '@/lib/api/auth'
 import { created, serverError, unprocessable, notFound, conflict } from '@/lib/api/response'
+import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { v4 as uuidv4 } from 'uuid'
+
+// Every publish writes an immutable snapshot row, so this is unbounded growth
+// if left open.
+const RATE_LIMIT = { name: 'projects-publish', max: 60, windowSeconds: 3600 }
 
 const PublishSchema = z.object({
   expiresAt: z.string().datetime({ offset: true }).optional(),
@@ -29,13 +34,13 @@ async function computeContentHash(content: unknown): Promise<string> {
     .join('')
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { user, supabase, error } = await requireAuth()
   if (error) return error
+
+  const limited = await enforceRateLimit(RATE_LIMIT, byUser(user!.id))
+  if (limited) return limited
 
   let body: unknown
   try {

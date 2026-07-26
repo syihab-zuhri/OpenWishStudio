@@ -2,9 +2,12 @@ import { type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/api/auth'
 import { ok, created, serverError, unprocessable, badRequest } from '@/lib/api/response'
+import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import { createDefaultDocument, ProjectDocumentSchema } from '@openwish/project-schema'
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
+
+const RATE_LIMIT = { name: 'projects-create', max: 30, windowSeconds: 3600 }
 
 const CursorSchema = z.object({
   updated_at: z.string().datetime({ offset: true }),
@@ -70,6 +73,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { user, supabase, error } = await requireAuth()
   if (error) return error
+
+  const limited = await enforceRateLimit(RATE_LIMIT, byUser(user!.id))
+  if (limited) return limited
 
   const contentLength = request.headers.get('content-length')
   if (contentLength && Number(contentLength) > MAX_DOCUMENT_BYTES) {

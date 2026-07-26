@@ -1,8 +1,13 @@
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { ok, created, serverError, unprocessable, notFound } from '@/lib/api/response'
+import { byIp, enforceRateLimit } from '@/lib/api/rate-limit'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
+
+// Unauthenticated and linked from every public page, so this is the endpoint
+// most exposed to automated abuse.
+const RATE_LIMIT = { name: 'public-reports', max: 5, windowSeconds: 3600 }
 
 const VALID_REASONS = [
   'harassment',
@@ -25,6 +30,10 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params
+
+  const limited = await enforceRateLimit(RATE_LIMIT, byIp(request))
+  if (limited) return limited
+
   const supabase = await createSupabaseServerClient()
 
   const { data: page } = await supabase

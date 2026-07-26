@@ -24,6 +24,16 @@ export default [
   },
   js.configs.recommended,
   {
+    // Build scripts and config files: plain ESM running under Node, so they get
+    // Node globals but none of the TypeScript tooling.
+    files: ['**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,

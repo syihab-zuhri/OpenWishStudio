@@ -3,9 +3,12 @@ import { v4 as uuidv4 } from 'uuid'
 import { requireAuth } from '@/lib/api/auth'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { created, notFound, serverError, unprocessable } from '@/lib/api/response'
+import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import type { ProjectDocument } from '@openwish/project-schema'
 
 type Params = Promise<{ id: string }>
+
+const RATE_LIMIT = { name: 'projects-duplicate', max: 30, windowSeconds: 3600 }
 
 function cloneDocumentWithNewIds(doc: ProjectDocument, newTitle: string): ProjectDocument {
   return {
@@ -23,6 +26,9 @@ export async function POST(request: NextRequest, { params }: { params: Params })
   const { id } = await params
   const { user, supabase, error } = await requireAuth()
   if (error) return error
+
+  const limited = await enforceRateLimit(RATE_LIMIT, byUser(user!.id))
+  if (limited) return limited
 
   const { data: source } = await fetchOwnedProject(supabase, user!.id, id)
   if (!source) return notFound()

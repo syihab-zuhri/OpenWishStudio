@@ -2,8 +2,12 @@ import { type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/api/auth'
 import { created, serverError, unprocessable, notFound } from '@/lib/api/response'
+import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { v4 as uuidv4 } from 'uuid'
+
+// Each call mints a signed upload URL good for up to 50 MB of storage.
+const RATE_LIMIT = { name: 'upload-intents', max: 60, windowSeconds: 3600 }
 
 // SVG is deliberately excluded: it carries script and is served from the
 // storage origin, where it would execute rather than render as an image.
@@ -42,6 +46,9 @@ const UploadIntentSchema = z.object({
 export async function POST(request: NextRequest) {
   const { user, supabase, error } = await requireAuth()
   if (error) return error
+
+  const limited = await enforceRateLimit(RATE_LIMIT, byUser(user!.id))
+  if (limited) return limited
 
   let body: unknown
   try {
@@ -86,21 +93,19 @@ export async function POST(request: NextRequest) {
 
   const serviceClient = await createSupabaseServiceClient()
 
-  const { error: insertError } = await serviceClient
-    .from('assets')
-    .insert({
-      id: assetId,
-      owner_id: user!.id,
-      created_by: user!.id,
-      project_id: projectId,
-      original_name: fileName,
-      size_bytes: size,
-      mime_type: mime,
-      kind,
-      storage_key: storageKey,
-      source: 'upload',
-      checksum_sha256: 'pending',
-    })
+  const { error: insertError } = await serviceClient.from('assets').insert({
+    id: assetId,
+    owner_id: user!.id,
+    created_by: user!.id,
+    project_id: projectId,
+    original_name: fileName,
+    size_bytes: size,
+    mime_type: mime,
+    kind,
+    storage_key: storageKey,
+    source: 'upload',
+    checksum_sha256: 'pending',
+  })
 
   if (insertError) {
     console.error('POST /api/v1/assets/upload-intents insert:', insertError.message)
