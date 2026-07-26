@@ -103,6 +103,7 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
                 scene={scene}
                 scale={scale}
                 interactive={false}
+                audioEnabled={audioEnabled}
               />
             </section>
           )

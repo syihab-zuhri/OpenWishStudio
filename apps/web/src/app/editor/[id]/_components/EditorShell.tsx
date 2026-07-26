@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useCallback, useRef, useState } from 'react'
-import type { ProjectDocument } from '@openwish/project-schema'
+import type { ProjectDocument, ElementNode, Scene } from '@openwish/project-schema'
 import { initEditorStore, useEditorStore, type SaveStatus } from '@/features/editor/store/editorStore'
 import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 import { useDrag } from '@/features/editor/hooks/useDrag'
 import { useAutosave } from '@/features/editor/hooks/useAutosave'
 import { PublishDialog } from './PublishDialog'
+
+type SidebarPanel = 'elemen' | 'template' | 'aset' | 'musik' | null
 
 interface Props {
   projectId: string
@@ -42,6 +44,7 @@ function EditorLayout() {
   const undo = useEditorStore((s) => s.undo)
   const redo = useEditorStore((s) => s.redo)
   const [showPublish, setShowPublish] = useState(false)
+  const [activePanel, setActivePanel] = useState<SidebarPanel>(null)
 
   useAutosave()
 
@@ -57,6 +60,10 @@ function EditorLayout() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [undo, redo])
+
+  function togglePanel(panel: SidebarPanel) {
+    setActivePanel((prev) => (prev === panel ? null : panel))
+  }
 
   return (
     <div className="flex h-screen flex-col bg-neutral-50">
@@ -103,11 +110,16 @@ function EditorLayout() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left toolbar */}
         <aside className="flex w-16 flex-col items-center gap-4 border-r border-neutral-200 bg-white py-4">
-          <SidebarIcon label="Elemen" icon="✦" />
-          <SidebarIcon label="Template" icon="⊞" />
-          <SidebarIcon label="Aset" icon="📁" />
-          <SidebarIcon label="Musik" icon="♪" />
+          <SidebarIcon label="Elemen" icon="✦" active={activePanel === 'elemen'} onClick={() => togglePanel('elemen')} />
+          <SidebarIcon label="Template" icon="⊞" active={activePanel === 'template'} onClick={() => togglePanel('template')} />
+          <SidebarIcon label="Aset" icon="📁" active={activePanel === 'aset'} onClick={() => togglePanel('aset')} />
+          <SidebarIcon label="Musik" icon="♪" active={activePanel === 'musik'} onClick={() => togglePanel('musik')} />
         </aside>
+
+        {/* Slide-in panel */}
+        {activePanel && (
+          <SidebarPanelContent panel={activePanel} onClose={() => setActivePanel(null)} />
+        )}
 
         {/* Scene navigator */}
         <SceneNavigator />
@@ -468,8 +480,6 @@ function InspectorPanel() {
 
 // ─── Element inspector ────────────────────────────────────────────────────────
 
-import type { ElementNode, Scene } from '@openwish/project-schema'
-
 function ElementInspector({
   element,
   sceneId,
@@ -818,15 +828,131 @@ function ColorInput({
 
 // ─── Sidebar icon ─────────────────────────────────────────────────────────────
 
-function SidebarIcon({ label, icon }: { label: string; icon: string }) {
+function SidebarIcon({
+  label,
+  icon,
+  active = false,
+  onClick,
+}: {
+  label: string
+  icon: string
+  active?: boolean
+  onClick?: () => void
+}) {
   return (
     <button
       type="button"
       title={label}
-      className="flex h-10 w-10 flex-col items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+      onClick={onClick}
+      className={`flex h-10 w-10 flex-col items-center justify-center rounded-md transition-colors ${
+        active
+          ? 'bg-brand-50 text-brand-600'
+          : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700'
+      }`}
     >
       <span className="text-base leading-none">{icon}</span>
       <span className="mt-0.5 text-[9px] leading-none">{label}</span>
     </button>
+  )
+}
+
+// ─── Sidebar panel content ─────────────────────────────────────────────────────
+
+function SidebarPanelContent({ panel, onClose }: { panel: NonNullable<SidebarPanel>; onClose: () => void }) {
+  const titles: Record<NonNullable<SidebarPanel>, string> = {
+    elemen: 'Elemen',
+    template: 'Template',
+    aset: 'Aset',
+    musik: 'Musik',
+  }
+
+  return (
+    <aside className="flex w-64 flex-col border-r border-neutral-200 bg-white overflow-hidden">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-neutral-100 px-3">
+        <span className="text-xs font-semibold text-neutral-700">{titles[panel]}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          aria-label="Tutup panel"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3">
+        {panel === 'elemen' && <ElemenPanel />}
+        {panel !== 'elemen' && <ComingSoonPanel />}
+      </div>
+    </aside>
+  )
+}
+
+// ─── Elemen panel ─────────────────────────────────────────────────────────────
+
+const ELEMENT_TYPES: { type: ElementNode['type']; label: string; icon: string }[] = [
+  { type: 'text', label: 'Teks', icon: 'T' },
+  { type: 'image', label: 'Gambar', icon: '🖼' },
+  { type: 'shape', label: 'Bentuk', icon: '⬟' },
+  { type: 'icon', label: 'Ikon', icon: '✦' },
+  { type: 'button', label: 'Tombol', icon: '⬜' },
+  { type: 'audioControl', label: 'Audio', icon: '♪' },
+]
+
+function makeDefaultElement(type: ElementNode['type']): ElementNode {
+  const base = { id: crypto.randomUUID(), x: 60, y: 120, width: 270, height: 60, zIndex: 1, locked: false, rotation: 0 }
+  switch (type) {
+    case 'text':
+      return { ...base, type: 'text', props: { content: 'Tulis teks...', fontSize: 24, fontWeight: 400, color: '#17171C', textAlign: 'center', lineHeight: 1.4 } }
+    case 'image':
+      return { ...base, type: 'image', width: 200, height: 200, props: { src: '', alt: 'Gambar', decorative: false, objectFit: 'cover' } }
+    case 'shape':
+      return { ...base, type: 'shape', width: 120, height: 120, props: { shape: 'rectangle', fill: '#6D5EF7', borderRadius: 12 } }
+    case 'icon':
+      return { ...base, type: 'icon', width: 48, height: 48, props: { iconName: 'heart', color: '#6D5EF7', size: 32 } }
+    case 'button':
+      return { ...base, type: 'button', height: 48, props: { label: 'Klik di sini', url: '#', variant: 'primary' as const, backgroundColor: '#6D5EF7', textColor: '#FFFFFF', borderRadius: 24 } }
+    case 'audioControl':
+      return { ...base, type: 'audioControl', width: 160, height: 44, props: { label: 'Putar Musik', compact: false } }
+  }
+}
+
+function ElemenPanel() {
+  const selectedSceneId = useEditorStore((s) => s.selectedSceneId)
+  const addElement = useEditorStore((s) => s.addElement)
+
+  function handleAdd(type: ElementNode['type']) {
+    if (!selectedSceneId) return
+    addElement(selectedSceneId, makeDefaultElement(type))
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {ELEMENT_TYPES.map(({ type, label, icon }) => (
+        <button
+          key={type}
+          type="button"
+          onClick={() => handleAdd(type)}
+          disabled={!selectedSceneId}
+          className="flex flex-col items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-neutral-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <span className="text-xl leading-none">{icon}</span>
+          <span className="text-[11px] font-medium">{label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Coming soon panel ────────────────────────────────────────────────────────
+
+function ComingSoonPanel() {
+  return (
+    <div className="flex flex-col items-center gap-2 pt-10 text-center">
+      <span className="text-3xl">🚧</span>
+      <p className="text-xs font-medium text-neutral-600">Segera hadir</p>
+      <p className="text-[11px] text-neutral-400">Fitur ini sedang dalam pengembangan.</p>
+    </div>
   )
 }

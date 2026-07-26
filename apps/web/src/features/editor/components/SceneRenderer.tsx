@@ -11,6 +11,7 @@ interface SceneRendererProps {
   /** px size of 1 design unit (390 coord → containerWidth px) */
   scale?: number
   interactive?: boolean
+  audioEnabled?: boolean
   onElementClick?: (elementId: string) => void
   onElementPointerDown?: (elementId: string, e: React.PointerEvent) => void
   onHandlePointerDown?: (elementId: string, handle: 'nw' | 'ne' | 'sw' | 'se', e: React.PointerEvent) => void
@@ -21,6 +22,7 @@ export function SceneRenderer({
   selectedElementId,
   scale = 1,
   interactive = false,
+  audioEnabled = false,
   onElementClick,
   onElementPointerDown,
   onHandlePointerDown,
@@ -42,6 +44,7 @@ export function SceneRenderer({
             scale={scale}
             selected={selectedElementId === el.id}
             interactive={interactive}
+            audioEnabled={audioEnabled}
             onClick={onElementClick}
             onPointerDown={onElementPointerDown}
             onHandlePointerDown={onHandlePointerDown}
@@ -82,6 +85,7 @@ interface ElementRendererProps {
   scale: number
   selected: boolean
   interactive: boolean
+  audioEnabled: boolean
   onClick?: (elementId: string) => void
   onPointerDown?: (elementId: string, e: React.PointerEvent) => void
   onHandlePointerDown?: (elementId: string, handle: 'nw' | 'ne' | 'sw' | 'se', e: React.PointerEvent) => void
@@ -92,6 +96,7 @@ function ElementRenderer({
   scale,
   selected,
   interactive,
+  audioEnabled,
   onClick,
   onPointerDown,
   onHandlePointerDown,
@@ -128,7 +133,7 @@ function ElementRenderer({
       onClick={interactive ? handleClick : undefined}
       onPointerDown={interactive ? handlePointerDown : undefined}
     >
-      <ElementContent element={element} scale={scale} />
+      <ElementContent element={element} scale={scale} audioEnabled={audioEnabled} />
       {selected && (
         <SelectionHandles
           elementId={element.id}
@@ -189,7 +194,7 @@ function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesPr
 
 // ─── Element Content ──────────────────────────────────────────────────────────
 
-function ElementContent({ element, scale }: { element: ElementNode; scale: number }) {
+function ElementContent({ element, scale, audioEnabled }: { element: ElementNode; scale: number; audioEnabled: boolean }) {
   switch (element.type) {
     case 'text':
       return (
@@ -304,14 +309,18 @@ function ElementContent({ element, scale }: { element: ElementNode; scale: numbe
           <svg
             viewBox="0 0 24 24"
             fill="currentColor"
-            style={{ width: 16 * scale, height: 16 * scale }}
+            style={{ width: 16 * scale, height: 16 * scale, color: audioEnabled ? '#6D5EF7' : '#17171C' }}
             aria-hidden="true"
           >
-            <path d="M9 4L3 9H1v6h2l6 5V4zm9.07.93a10 10 0 010 14.14M15.54 7.46a5 5 0 010 7.07" />
+            {audioEnabled ? (
+              <path d="M9 4L3 9H1v6h2l6 5V4zm9.07.93a10 10 0 010 14.14M15.54 7.46a5 5 0 010 7.07" />
+            ) : (
+              <path d="M9 4L3 9H1v6h2l6 5V4zM23 9l-6 6m0-6l6 6" />
+            )}
           </svg>
           {!element.props.compact && (
             <span style={{ fontSize: 12 * scale, color: '#17171C', whiteSpace: 'nowrap' }}>
-              {element.props.label ?? 'Putar Musik'}
+              {audioEnabled ? (element.props.label ?? 'Putar Musik') : 'Audio nonaktif'}
             </span>
           )}
         </div>

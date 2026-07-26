@@ -97,6 +97,7 @@ export function PublicViewer({ document, expiresAt }: Props) {
                 scene={scene}
                 scale={scale}
                 interactive={false}
+                audioEnabled={audioEnabled}
               />
             </section>
           )
