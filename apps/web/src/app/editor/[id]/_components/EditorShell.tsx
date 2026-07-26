@@ -9,6 +9,7 @@ import {
 } from '@/features/editor/store/editorStore'
 import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 import { useDrag } from '@/features/editor/hooks/useDrag'
+import { computeSnap } from '@/features/editor/utils/snapping'
 import { useAutosave } from '@/features/editor/hooks/useAutosave'
 import { PublishDialog } from './PublishDialog'
 import { TemplatePanel, AsetPanel, MusikPanel } from './EditorPanels'
@@ -456,21 +457,62 @@ function CanvasWorkspace() {
   const updateElement = useEditorStore((s) => s.updateElement)
   const commitElementDrag = useEditorStore((s) => s.commitElementDrag)
 
+  const [activeGuides, setActiveGuides] = useState<{ v: number[]; h: number[] } | null>(null)
+
+  // Snap hanya untuk drag pindah (patch tanpa width/height); resize dibiarkan bebas
+  const applySnap = useCallback(
+    (elementId: string, patch: { x?: number; y?: number; width?: number; height?: number }) => {
+      if (
+        !scene ||
+        patch.width !== undefined ||
+        patch.height !== undefined ||
+        patch.x === undefined ||
+        patch.y === undefined
+      ) {
+        return { patch, guides: null }
+      }
+      const el = scene.elements.find((e) => e.id === elementId)
+      if (!el) return { patch, guides: null }
+      const others = scene.elements
+        .filter((e) => e.id !== elementId)
+        .map((e) => ({ x: e.x, y: e.y, width: e.width, height: e.height }))
+      const snap = computeSnap(
+        { x: patch.x, y: patch.y, width: el.width, height: el.height },
+        others,
+        { width: scene.baseWidth, height: scene.baseHeight },
+        6 / zoom,
+      )
+      return {
+        patch: { x: snap.x, y: snap.y },
+        guides:
+          snap.guidesV.length || snap.guidesH.length ? { v: snap.guidesV, h: snap.guidesH } : null,
+      }
+    },
+    [scene, zoom],
+  )
+
   const { startDrag, onPointerMove, onPointerUp, isDragging } = useDrag({
     zoom,
     onCommit: useCallback(
       (elementId, patch) => {
-        if (selectedSceneId) commitElementDrag(selectedSceneId, elementId, patch)
+        if (selectedSceneId) {
+          const snapped = applySnap(elementId, patch)
+          commitElementDrag(selectedSceneId, elementId, snapped.patch)
+        }
+        setActiveGuides(null)
       },
-      [selectedSceneId, commitElementDrag],
+      [selectedSceneId, commitElementDrag, applySnap],
     ),
   })
 
   const liveUpdate = useCallback(
     (elementId: string, patch: { x?: number; y?: number; width?: number; height?: number }) => {
-      if (selectedSceneId) updateElement(selectedSceneId, elementId, patch)
+      if (!selectedSceneId) return
+      const snapped = applySnap(elementId, patch)
+      setActiveGuides(snapped.guides)
+      updateElement(selectedSceneId, elementId, snapped.patch)
     },
-    [selectedSceneId, updateElement],
+    [selectedSceneId, updateElement, applySnap],
   )
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -498,14 +540,17 @@ function CanvasWorkspace() {
           if (!isDragging()) selectElement(null)
         }}
         onPointerMove={(e) => onPointerMove(e, liveUpdate)}
-        onPointerUp={(e) => onPointerUp(e, liveUpdate)}
+        onPointerUp={(e) => {
+          onPointerUp(e, liveUpdate)
+          setActiveGuides(null)
+        }}
       >
         {/* m-auto: tetap center saat muat, dan bisa discroll penuh saat overflow */}
         <div className="flex min-h-full min-w-full">
           <div className="m-auto shrink-0 p-4 sm:p-8">
             {scene ? (
               <div
-                className="rounded-sm shadow-lg"
+                className="relative rounded-sm shadow-lg"
                 style={{
                   width: scene.baseWidth * zoom,
                   height: scene.baseHeight * zoom,
@@ -542,6 +587,29 @@ function CanvasWorkspace() {
                     })
                   }}
                 />
+                {/* Garis panduan snap — di atas semua elemen scene */}
+                {activeGuides && (
+                  <div
+                    className="pointer-events-none absolute inset-0 overflow-hidden"
+                    style={{ zIndex: 9999 }}
+                    aria-hidden="true"
+                  >
+                    {activeGuides.v.map((x) => (
+                      <div
+                        key={`v-${x}`}
+                        className="absolute inset-y-0 w-px"
+                        style={{ left: x * zoom, backgroundColor: 'var(--color-secondary)' }}
+                      />
+                    ))}
+                    {activeGuides.h.map((y) => (
+                      <div
+                        key={`h-${y}`}
+                        className="absolute inset-x-0 h-px"
+                        style={{ top: y * zoom, backgroundColor: 'var(--color-secondary)' }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div
