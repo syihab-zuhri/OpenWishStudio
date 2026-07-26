@@ -14,9 +14,7 @@ function safeUrl(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   try {
     const parsed = new URL(value)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
-      ? parsed.href
-      : undefined
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : undefined
   } catch {
     return undefined
   }
@@ -33,7 +31,11 @@ interface SceneRendererProps {
   audioEnabled?: boolean
   onElementClick?: (elementId: string) => void
   onElementPointerDown?: (elementId: string, e: React.PointerEvent) => void
-  onHandlePointerDown?: (elementId: string, handle: 'nw' | 'ne' | 'sw' | 'se', e: React.PointerEvent) => void
+  onHandlePointerDown?: (
+    elementId: string,
+    handle: 'nw' | 'ne' | 'sw' | 'se',
+    e: React.PointerEvent,
+  ) => void
 }
 
 export function SceneRenderer({
@@ -81,9 +83,7 @@ function sceneBackground(scene: Scene): CSSProperties {
     return { backgroundColor: bg.color }
   }
   if (bg.type === 'gradient') {
-    const stops = bg.gradient.stops
-      .map((s) => `${s.color} ${s.position}%`)
-      .join(', ')
+    const stops = bg.gradient.stops.map((s) => `${s.color} ${s.position}%`).join(', ')
     return { background: `linear-gradient(${bg.gradient.direction}deg, ${stops})` }
   }
   if (bg.type === 'image') {
@@ -91,7 +91,8 @@ function sceneBackground(scene: Scene): CSSProperties {
     return {
       // encodeURI stops a quote or paren in the URL from closing url(...)
       backgroundImage: src ? `url("${encodeURI(src)}")` : 'none',
-      backgroundSize: bg.objectFit === 'contain' ? 'contain' : bg.objectFit === 'fill' ? '100% 100%' : 'cover',
+      backgroundSize:
+        bg.objectFit === 'contain' ? 'contain' : bg.objectFit === 'fill' ? '100% 100%' : 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
     }
@@ -109,7 +110,11 @@ interface ElementRendererProps {
   audioEnabled: boolean
   onClick?: (elementId: string) => void
   onPointerDown?: (elementId: string, e: React.PointerEvent) => void
-  onHandlePointerDown?: (elementId: string, handle: 'nw' | 'ne' | 'sw' | 'se', e: React.PointerEvent) => void
+  onHandlePointerDown?: (
+    elementId: string,
+    handle: 'nw' | 'ne' | 'sw' | 'se',
+    e: React.PointerEvent,
+  ) => void
 }
 
 function ElementRenderer({
@@ -132,7 +137,8 @@ function ElementRenderer({
     zIndex: element.zIndex,
     pointerEvents: interactive && !element.locked ? 'auto' : 'none',
     cursor: interactive && !element.locked ? 'default' : undefined,
-    outline: selected ? '2px solid #6D5EF7' : undefined,
+    // Selection affordance = editor chrome — ikut token design system (cream), bukan konten scene
+    outline: selected ? '2px solid var(--color-primary)' : undefined,
     outlineOffset: selected ? '1px' : undefined,
   }
 
@@ -156,10 +162,7 @@ function ElementRenderer({
     >
       <ElementContent element={element} scale={scale} audioEnabled={audioEnabled} />
       {selected && (
-        <SelectionHandles
-          elementId={element.id}
-          onHandlePointerDown={onHandlePointerDown}
-        />
+        <SelectionHandles elementId={element.id} onHandlePointerDown={onHandlePointerDown} />
       )}
     </div>
   )
@@ -169,7 +172,11 @@ function ElementRenderer({
 
 interface SelectionHandlesProps {
   elementId: string
-  onHandlePointerDown?: (elementId: string, handle: 'nw' | 'ne' | 'sw' | 'se', e: React.PointerEvent) => void
+  onHandlePointerDown?: (
+    elementId: string,
+    handle: 'nw' | 'ne' | 'sw' | 'se',
+    e: React.PointerEvent,
+  ) => void
 }
 
 function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesProps) {
@@ -177,8 +184,8 @@ function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesPr
     position: 'absolute',
     width: 8,
     height: 8,
-    backgroundColor: '#6D5EF7',
-    border: '1px solid #fff',
+    backgroundColor: 'var(--color-primary)',
+    border: '1.5px solid var(--color-text-on-primary)',
     borderRadius: 2,
     pointerEvents: onHandlePointerDown ? 'auto' : 'none',
   }
@@ -215,7 +222,15 @@ function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesPr
 
 // ─── Element Content ──────────────────────────────────────────────────────────
 
-function ElementContent({ element, scale, audioEnabled }: { element: ElementNode; scale: number; audioEnabled: boolean }) {
+function ElementContent({
+  element,
+  scale,
+  audioEnabled,
+}: {
+  element: ElementNode
+  scale: number
+  audioEnabled: boolean
+}) {
   switch (element.type) {
     case 'text':
       return (
@@ -322,7 +337,7 @@ function ElementContent({ element, scale, audioEnabled }: { element: ElementNode
     case 'audioControl':
       return (
         <div
-          className="flex items-center gap-2 rounded-full bg-white/90 shadow-panel backdrop-blur-sm"
+          className="flex items-center gap-2 rounded-full bg-white/90 shadow-[0_1px_3px_rgba(0,0,0,0.12)] backdrop-blur-sm"
           style={{ padding: `${4 * scale}px ${10 * scale}px` }}
           role="group"
           aria-label={element.props.label ?? 'Audio control'}
@@ -330,7 +345,11 @@ function ElementContent({ element, scale, audioEnabled }: { element: ElementNode
           <svg
             viewBox="0 0 24 24"
             fill="currentColor"
-            style={{ width: 16 * scale, height: 16 * scale, color: audioEnabled ? '#6D5EF7' : '#17171C' }}
+            style={{
+              width: 16 * scale,
+              height: 16 * scale,
+              color: audioEnabled ? '#6D5EF7' : '#17171C',
+            }}
             aria-hidden="true"
           >
             {audioEnabled ? (
@@ -380,7 +399,8 @@ function ShapeElement({ element }: { element: Extract<ElementNode, { type: 'shap
   const paths: Record<string, string> = {
     triangle: 'M50 5 L95 95 L5 95 Z',
     star: 'M50 5 L61 35 L95 35 L68 57 L79 91 L50 70 L21 91 L32 57 L5 35 L39 35 Z',
-    heart: 'M50 85 C50 85 5 55 5 28 C5 14 17 5 30 5 C40 5 50 13 50 13 C50 13 60 5 70 5 C83 5 95 14 95 28 C95 55 50 85 50 85 Z',
+    heart:
+      'M50 85 C50 85 5 55 5 28 C5 14 17 5 30 5 C40 5 50 13 50 13 C50 13 60 5 70 5 C83 5 95 14 95 28 C95 55 50 85 50 85 Z',
   }
 
   return (

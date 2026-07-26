@@ -59,8 +59,8 @@ function ImportFlow() {
         setErrorMsg('Terjadi kesalahan jaringan.')
         setPhase('failed')
       })
-  // run once on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function handleDownload() {
@@ -81,39 +81,39 @@ function ImportFlow() {
 
   if (phase === 'importing' || phase === 'nothing') {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-neutral-50">
+      <main className="bg-background bg-spotlight flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-brand-500 border-t-transparent" />
-          <p className="text-sm text-neutral-500">Mengimpor kreasimu…</p>
+          <div className="border-primary h-8 w-8 animate-spin rounded-full border-[3px] border-t-transparent" />
+          <p className="text-text-secondary text-sm">Mengimpor kreasimu…</p>
         </div>
       </main>
     )
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-panel text-center">
-        <div className="mb-3 text-3xl" aria-hidden="true">⚠️</div>
-        <h1 className="text-base font-semibold text-neutral-900 mb-2">
-          Gagal mengimpor kreasi
-        </h1>
-        <p className="text-sm text-neutral-500 mb-5">
-          {errorMsg ?? 'Kreasi tidak dapat diimpor secara otomatis.'}{' '}
-          Unduh salinan pemulihan agar tidak kehilangan hasil kerjamu.
+    <main className="bg-background flex min-h-screen items-center justify-center px-4">
+      <div className="bg-surface w-full max-w-sm rounded-md p-6 text-center shadow-sm">
+        <div className="mb-3 text-3xl" aria-hidden="true">
+          ⚠️
+        </div>
+        <h1 className="text-text-primary mb-2 text-base font-semibold">Gagal mengimpor kreasi</h1>
+        <p className="text-text-secondary mb-5 text-sm">
+          {errorMsg ?? 'Kreasi tidak dapat diimpor secara otomatis.'} Unduh salinan pemulihan agar
+          tidak kehilangan hasil kerjamu.
         </p>
 
         <div className="flex flex-col gap-2">
           <button
             type="button"
             onClick={handleDownload}
-            className="w-full rounded-xl bg-brand-500 py-2.5 text-sm font-medium text-white hover:bg-brand-600 transition-colors"
+            className="bg-primary text-text-on-primary hover:bg-primary-hover w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-[0.06em] transition-colors"
           >
             Unduh Salinan Pemulihan
           </button>
           <button
             type="button"
             onClick={handleSkip}
-            className="w-full rounded-xl border border-neutral-200 py-2.5 text-sm text-neutral-600 hover:bg-neutral-50 transition-colors"
+            className="border-border-strong text-text-secondary hover:bg-surface-hover w-full rounded-sm border py-2.5 text-sm transition-colors"
           >
             Lewati
           </button>

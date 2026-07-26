@@ -30,13 +30,13 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
   }, [])
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-neutral-950">
+    <div className="bg-canvas flex min-h-screen flex-col items-center">
       {/* Draft Banner */}
-      <div className="flex w-full items-center justify-between gap-4 bg-violet-600 px-4 py-2.5">
+      <div className="bg-surface-2 flex w-full items-center justify-between gap-4 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <Link
             href={`/editor/${projectId}`}
-            className="flex items-center gap-1.5 text-sm text-violet-100 transition-colors hover:text-white"
+            className="text-text-secondary hover:text-text-primary flex items-center gap-1.5 text-sm transition-colors"
             aria-label="Kembali ke editor"
           >
             <svg
@@ -50,10 +50,12 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
             </svg>
             Editor
           </Link>
-          <span className="text-xs text-violet-300">|</span>
-          <span className="max-w-48 truncate text-sm font-medium text-white">{projectName}</span>
+          <span className="text-text-muted text-xs">|</span>
+          <span className="text-text-primary max-w-48 truncate text-sm font-medium">
+            {projectName}
+          </span>
         </div>
-        <span className="shrink-0 rounded-full border border-violet-400/50 bg-violet-500/60 px-2.5 py-0.5 text-xs font-medium text-violet-100">
+        <span className="border-border-strong bg-surface-hover text-text-secondary shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em]">
           Draft Preview
         </span>
       </div>
@@ -64,28 +66,28 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
           role="dialog"
           aria-label="Aktifkan audio"
           className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8"
-          style={{ background: 'rgba(0,0,0,0.6)' }}
+          style={{ background: 'rgba(3, 18, 23, 0.7)' }}
         >
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+          <div className="bg-surface-2 w-full max-w-sm rounded-lg p-6 text-center shadow-xl">
             <div className="mb-3 text-3xl" aria-hidden="true">
               🎵
             </div>
-            <h2 className="mb-1 text-base font-semibold text-neutral-900">
+            <h2 className="text-text-primary mb-1 text-base font-semibold">
               Ucapan ini memiliki musik
             </h2>
-            <p className="mb-5 text-sm text-neutral-500">
+            <p className="text-text-secondary mb-5 text-sm">
               Aktifkan audio untuk pengalaman terbaik.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={handleDismissAudio}
-                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm text-neutral-600 hover:bg-neutral-50"
+                className="border-border-strong text-text-secondary hover:bg-surface-hover flex-1 rounded-sm border py-2.5 text-sm"
               >
                 Lewati
               </button>
               <button
                 onClick={handleEnableAudio}
-                className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-700"
+                className="bg-primary text-text-on-primary hover:bg-primary-hover flex-1 rounded-sm py-2.5 text-sm font-semibold"
               >
                 Aktifkan Audio
               </button>
@@ -122,11 +124,11 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
         })}
       </main>
 
-      <footer className="py-6 text-center text-xs text-neutral-600">
+      <footer className="text-text-muted py-6 text-center text-xs">
         Dibuat dengan{' '}
         <Link
           href="/"
-          className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+          className="text-primary hover:text-primary-hover underline underline-offset-2"
         >
           OpenWish Studio
         </Link>

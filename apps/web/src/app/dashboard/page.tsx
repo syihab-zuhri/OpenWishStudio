@@ -31,13 +31,17 @@ export default async function DashboardPage() {
     .single()
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="bg-background min-h-screen">
       {/* Topbar */}
-      <header className="sticky top-0 z-10 border-b border-neutral-200 bg-white">
+      <header className="bg-surface shadow-xs sticky top-0 z-10">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-          <span className="text-base font-semibold text-neutral-900">OpenWish Studio</span>
+          <span className="font-display text-text-primary text-base uppercase tracking-[0.06em]">
+            OpenWish Studio
+          </span>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-neutral-500">{profile?.display_name ?? user.email}</span>
+            <span className="text-text-secondary text-sm">
+              {profile?.display_name ?? user.email}
+            </span>
             <SignOutButton />
           </div>
         </div>
@@ -46,10 +50,12 @@ export default async function DashboardPage() {
       {/* Content */}
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-neutral-900">Kreasimu</h1>
+          <h1 className="font-display text-text-primary text-4xl uppercase tracking-[0.02em]">
+            Kreasimu
+          </h1>
           <Link
             href="/editor/new"
-            className="bg-brand-500 hover:bg-brand-600 rounded-full px-5 py-2 text-sm font-medium text-white transition-colors"
+            className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-5 py-2 text-xs font-semibold uppercase tracking-[0.06em] transition-colors"
           >
             + Buat Baru
           </Link>
@@ -71,13 +77,15 @@ export default async function DashboardPage() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-200 py-20 text-center">
+    <div className="bg-surface bg-spotlight relative flex flex-col items-center justify-center overflow-hidden rounded-md py-20 text-center shadow-sm">
       <div className="mb-3 text-4xl">🎨</div>
-      <h2 className="text-base font-semibold text-neutral-900">Buat kreasi pertama</h2>
-      <p className="mt-1 text-sm text-neutral-500">Mulai dari template atau kanvas kosong.</p>
+      <h2 className="font-display text-text-primary text-2xl uppercase tracking-[0.03em]">
+        Buat kreasi pertama
+      </h2>
+      <p className="text-text-secondary mt-1 text-sm">Mulai dari template atau kanvas kosong.</p>
       <Link
         href="/editor/new"
-        className="bg-brand-500 hover:bg-brand-600 mt-5 rounded-full px-6 py-2.5 text-sm font-medium text-white transition-colors"
+        className="bg-primary text-text-on-primary hover:bg-primary-hover mt-5 rounded-sm px-6 py-2.5 text-xs font-semibold uppercase tracking-[0.06em] transition-colors"
       >
         Mulai Berkreasi
       </Link>
@@ -96,9 +104,9 @@ function ProjectCard({
   }
 }) {
   const statusLabel: Record<string, { label: string; color: string }> = {
-    draft: { label: 'Draft', color: 'text-neutral-500 bg-neutral-100' },
-    published: { label: 'Published', color: 'text-success-700 bg-green-50' },
-    expired: { label: 'Expired', color: 'text-warning-600 bg-yellow-50' },
+    draft: { label: 'Draft', color: 'text-text-secondary bg-surface-hover' },
+    published: { label: 'Published', color: 'text-success bg-success-subtle' },
+    expired: { label: 'Expired', color: 'text-warning bg-warning-subtle' },
   }
   const badge = statusLabel[project.status] ?? statusLabel.draft
 
@@ -109,21 +117,23 @@ function ProjectCard({
   })
 
   return (
-    <div className="hover:shadow-panel group flex flex-col rounded-lg border border-neutral-200 bg-white transition-shadow">
+    <div className="bg-surface group flex flex-col rounded-md shadow-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-1 hover:shadow-md">
       {/* Thumbnail placeholder */}
       <a href={`/editor/${project.id}`} className="block flex-1">
-        <div className="flex h-40 items-center justify-center rounded-t-lg bg-neutral-50">
+        <div className="bg-canvas flex h-40 items-center justify-center rounded-t-md">
           <span className="text-3xl opacity-30">🎨</span>
         </div>
         {/* Footer */}
         <div className="p-3">
-          <p className="truncate text-sm font-medium text-neutral-900">{project.name}</p>
-          <p className="mt-0.5 text-xs text-neutral-400">{updatedAt}</p>
+          <p className="text-text-primary truncate text-sm font-medium">{project.name}</p>
+          <p className="text-text-muted mt-0.5 text-xs">{updatedAt}</p>
         </div>
       </a>
       {/* Action row */}
-      <div className="flex items-center justify-between border-t border-neutral-100 px-3 py-2">
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}>
+      <div className="border-border flex items-center justify-between border-t px-3 py-2">
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] ${badge.color}`}
+        >
           {badge.label}
         </span>
         <ProjectCardMenu project={project} />
@@ -137,7 +147,7 @@ function SignOutButton() {
     <form action="/api/v1/auth/signout" method="POST">
       <button
         type="submit"
-        className="rounded-md px-3 py-1.5 text-sm text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+        className="text-text-secondary hover:bg-surface-hover hover:text-text-primary rounded-sm px-3 py-1.5 text-sm transition-colors"
       >
         Keluar
       </button>

@@ -32,34 +32,34 @@ export function PublicViewer({ document, expiresAt }: Props) {
     expiresAt !== null && new Date(expiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-neutral-950">
+    <div className="bg-canvas flex min-h-screen flex-col items-center">
       {showAudioPrompt && !audioEnabled && (
         <div
           role="dialog"
           aria-label="Aktifkan audio"
           className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8"
-          style={{ background: 'rgba(0,0,0,0.6)' }}
+          style={{ background: 'rgba(3, 18, 23, 0.7)' }}
         >
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+          <div className="bg-surface-2 w-full max-w-sm rounded-lg p-6 text-center shadow-xl">
             <div className="mb-3 text-3xl" aria-hidden="true">
               🎵
             </div>
-            <h2 className="mb-1 text-base font-semibold text-neutral-900">
+            <h2 className="text-text-primary mb-1 text-base font-semibold">
               Ucapan ini memiliki musik
             </h2>
-            <p className="mb-5 text-sm text-neutral-500">
+            <p className="text-text-secondary mb-5 text-sm">
               Aktifkan audio untuk pengalaman terbaik.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={handleDismissAudio}
-                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm text-neutral-600 hover:bg-neutral-50"
+                className="border-border-strong text-text-secondary hover:bg-surface-hover flex-1 rounded-sm border py-2.5 text-sm"
               >
                 Lewati
               </button>
               <button
                 onClick={handleEnableAudio}
-                className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-700"
+                className="bg-primary text-text-on-primary hover:bg-primary-hover flex-1 rounded-sm py-2.5 text-sm font-semibold"
               >
                 Aktifkan Audio
               </button>
@@ -71,7 +71,7 @@ export function PublicViewer({ document, expiresAt }: Props) {
       {isExpiringSoon && expiresAt && (
         <div
           role="status"
-          className="w-full border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-700"
+          className="bg-warning-subtle text-warning w-full px-4 py-2 text-center text-xs"
         >
           Ucapan ini akan kedaluwarsa pada{' '}
           <time dateTime={expiresAt}>
@@ -111,11 +111,11 @@ export function PublicViewer({ document, expiresAt }: Props) {
         })}
       </main>
 
-      <footer className="py-6 text-center text-xs text-neutral-600">
+      <footer className="text-text-muted py-6 text-center text-xs">
         Dibuat dengan{' '}
         <Link
           href="/"
-          className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+          className="text-primary hover:text-primary-hover underline underline-offset-2"
         >
           OpenWish Studio
         </Link>

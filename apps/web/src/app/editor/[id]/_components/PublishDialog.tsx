@@ -132,7 +132,9 @@ export function PublishDialog({ projectId, onClose }: Props) {
 
   const isPublished = status?.status === 'published'
   const publishedUrl = result?.url ?? (isPublished ? status?.url : null)
-  const fullPublishedUrl = publishedUrl ? `${typeof window !== 'undefined' ? window.location.origin : ''}${publishedUrl}` : null
+  const fullPublishedUrl = publishedUrl
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}${publishedUrl}`
+    : null
 
   return (
     <div
@@ -140,51 +142,57 @@ export function PublishDialog({ projectId, onClose }: Props) {
       aria-modal="true"
       aria-label="Publikasikan kreasi"
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.5)' }}
+      style={{ background: 'rgba(3, 18, 23, 0.6)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+      <div className="bg-surface-2 w-full max-w-md overflow-hidden rounded-lg shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
-          <h2 className="text-base font-semibold text-neutral-900">Publikasikan Kreasi</h2>
+        <div className="border-border flex items-center justify-between border-b px-6 py-4">
+          <h2 className="text-text-primary text-base font-semibold">Publikasikan Kreasi</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors"
+            className="text-text-muted hover:bg-surface-hover hover:text-text-primary rounded-sm p-1.5 transition-colors"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="space-y-5 px-6 py-5">
           {/* Loading */}
           {!status && !loadError && (
             <div className="flex justify-center py-4">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+              <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
             </div>
           )}
 
           {loadError && (
-            <p className="text-sm text-red-600 text-center">Gagal memuat status publikasi.</p>
+            <p className="text-error text-center text-sm">Gagal memuat status publikasi.</p>
           )}
 
           {status && (
             <>
               {/* Published link result */}
               {publishedUrl && (
-                <div className="rounded-xl bg-green-50 border border-green-200 p-4 space-y-2">
-                  <p className="text-xs font-medium text-green-700 uppercase tracking-wide">
+                <div className="border-success/25 bg-success-subtle space-y-2 rounded-md border p-4">
+                  <p className="text-success text-xs font-medium uppercase tracking-[0.08em]">
                     {result ? 'Berhasil dipublikasikan!' : 'Sudah dipublikasikan'}
                     {status.versionNo && !result && (
-                      <span className="font-normal normal-case text-green-600 ml-1">
+                      <span className="text-success/80 ml-1 font-normal normal-case">
                         · v{status.versionNo}
                       </span>
                     )}
                     {result && (
-                      <span className="font-normal normal-case text-green-600 ml-1">
+                      <span className="text-success/80 ml-1 font-normal normal-case">
                         · v{result.versionNo}
                       </span>
                     )}
@@ -194,20 +202,20 @@ export function PublishDialog({ projectId, onClose }: Props) {
                       href={publishedUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 truncate text-sm text-brand-600 hover:text-brand-700 underline underline-offset-2"
+                      className="text-primary hover:text-primary-hover flex-1 truncate text-sm underline underline-offset-2"
                     >
                       {fullPublishedUrl}
                     </a>
                     <button
                       type="button"
                       onClick={handleCopy}
-                      className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 transition-colors"
+                      className="border-border-strong text-text-secondary hover:bg-surface-hover shrink-0 rounded-sm border px-3 py-1.5 text-xs font-medium transition-colors"
                     >
                       {copied ? 'Disalin!' : 'Salin'}
                     </button>
                   </div>
                   {(result?.expiresAt ?? status.expiresAt) && (
-                    <p className="text-xs text-green-600">
+                    <p className="text-success/80 text-xs">
                       Kedaluwarsa: {formatDate((result?.expiresAt ?? status.expiresAt)!)}
                     </p>
                   )}
@@ -217,22 +225,22 @@ export function PublishDialog({ projectId, onClose }: Props) {
               {/* Expiry selector — shown when not yet published or to republish */}
               <div className="space-y-1.5">
                 {!isPublished && !result && (
-                  <p className="text-sm text-neutral-500">
+                  <p className="text-text-secondary text-sm">
                     {status.status === 'draft'
                       ? 'Kreasi ini belum dipublikasikan. Pilih masa berlaku lalu tekan Publikasikan.'
                       : 'Publikasi sebelumnya sudah ditarik. Publikasikan ulang di bawah.'}
                   </p>
                 )}
                 {(isPublished || result) && (
-                  <p className="text-sm font-medium text-neutral-700">Publikasikan ulang</p>
+                  <p className="text-text-secondary text-sm font-medium">Publikasikan ulang</p>
                 )}
-                <label className="block text-xs font-medium text-neutral-600">
+                <label className="text-text-secondary block text-xs font-medium">
                   Masa berlaku tautan
                 </label>
                 <select
                   value={expiry}
                   onChange={(e) => setExpiry(e.target.value)}
-                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-400"
+                  className="border-border-strong bg-background text-text-primary focus:border-primary focus:ring-primary/35 w-full rounded-sm border px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
                 >
                   {EXPIRY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -243,23 +251,21 @@ export function PublishDialog({ projectId, onClose }: Props) {
               </div>
 
               {/* Error */}
-              {actionError && (
-                <p className="text-sm text-red-600">{actionError}</p>
-              )}
+              {actionError && <p className="text-error text-sm">{actionError}</p>}
             </>
           )}
         </div>
 
         {/* Footer */}
         {status && (
-          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-neutral-100 bg-neutral-50">
+          <div className="border-border flex items-center justify-between gap-3 border-t px-6 py-4">
             <div>
               {isPublished && !result && (
                 <button
                   type="button"
                   onClick={handleUnpublish}
                   disabled={unpublishing}
-                  className="rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                  className="text-error hover:bg-error-subtle rounded-sm px-3 py-2 text-sm transition-colors disabled:opacity-50"
                 >
                   {unpublishing ? 'Menarik…' : 'Tarik publikasi'}
                 </button>
@@ -269,7 +275,7 @@ export function PublishDialog({ projectId, onClose }: Props) {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl border border-neutral-200 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-100 transition-colors"
+                className="border-border-strong text-text-secondary hover:bg-surface-hover rounded-sm border px-4 py-2 text-sm transition-colors"
               >
                 {result ? 'Tutup' : 'Batal'}
               </button>
@@ -277,13 +283,13 @@ export function PublishDialog({ projectId, onClose }: Props) {
                 type="button"
                 onClick={handlePublish}
                 disabled={publishing}
-                className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 transition-colors disabled:opacity-50"
+                className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.06em] transition-colors disabled:opacity-50"
               >
                 {publishing
                   ? 'Memproses…'
                   : isPublished && !result
-                  ? 'Publikasikan ulang'
-                  : 'Publikasikan'}
+                    ? 'Publikasikan ulang'
+                    : 'Publikasikan'}
               </button>
             </div>
           </div>

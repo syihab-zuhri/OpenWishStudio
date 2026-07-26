@@ -1,8 +1,20 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Bebas_Neue, Poppins } from 'next/font/google'
 import '@/styles/globals.css'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
+// Display: substitute Bebas Neue untuk display art-deco deck (lihat design.md)
+const bebas = Bebas_Neue({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-bebas',
+})
+
+// UI/body font — app chrome. Font konten scene user berasal dari template registry.
+const poppins = Poppins({
+  weight: ['400', '500', '600', '700'],
+  subsets: ['latin'],
+  variable: '--font-poppins',
+})
 
 export const metadata: Metadata = {
   title: 'OpenWish Studio',
@@ -11,8 +23,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id">
-      <body className={`${inter.variable} font-sans antialiased`}>{children}</body>
+    <html lang="id" className={`${bebas.variable} ${poppins.variable}`}>
+      <body className="bg-background text-text-primary font-sans antialiased">{children}</body>
     </html>
   )
 }
