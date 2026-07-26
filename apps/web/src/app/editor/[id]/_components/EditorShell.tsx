@@ -51,6 +51,8 @@ function EditorLayout() {
   const isGuest = useEditorStore((s) => s.isGuest)
   const saveStatus = useEditorStore((s) => s.saveStatus)
   const requestSaveNow = useEditorStore((s) => s.requestSaveNow)
+  const manualSaveState = useEditorStore((s) => s.manualSaveState)
+  const setManualSaveState = useEditorStore((s) => s.setManualSaveState)
   const undo = useEditorStore((s) => s.undo)
   const redo = useEditorStore((s) => s.redo)
   const canUndo = useEditorStore((s) => s.past.length > 0)
@@ -80,6 +82,16 @@ function EditorLayout() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [undo, redo])
+
+  // Toast hasil simpan manual hilang sendiri: sukses 2,5 dtk, gagal 5 dtk
+  useEffect(() => {
+    if (manualSaveState !== 'success' && manualSaveState !== 'error') return
+    const t = setTimeout(
+      () => setManualSaveState('idle'),
+      manualSaveState === 'success' ? 2500 : 5000,
+    )
+    return () => clearTimeout(t)
+  }, [manualSaveState, setManualSaveState])
 
   function togglePanel(panel: SidebarPanel) {
     setShowInspectorSheet(false)
@@ -235,6 +247,14 @@ function EditorLayout() {
       </header>
 
       {showPublish && <PublishDialog projectId={projectId} onClose={() => setShowPublish(false)} />}
+
+      {/* Toast hasil simpan manual */}
+      {manualSaveState === 'success' && (
+        <SaveToast kind="success" text="Perubahan berhasil disimpan." />
+      )}
+      {manualSaveState === 'error' && (
+        <SaveToast kind="error" text="Gagal menyimpan. Periksa koneksi lalu coba lagi." />
+      )}
 
       {/* Editor body */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1388,6 +1408,34 @@ function ElemenPanel() {
           <span className="text-[11px] font-medium">{label}</span>
         </button>
       ))}
+    </div>
+  )
+}
+
+// ─── Save toast ───────────────────────────────────────────────────────────────
+
+function SaveToast({ kind, text }: { kind: 'success' | 'error'; text: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 top-16 z-50 flex justify-center px-4"
+    >
+      <div
+        className={`flex items-center gap-2.5 rounded-md border px-4 py-2.5 text-sm shadow-lg ${
+          kind === 'success'
+            ? 'border-success/40 bg-success-subtle'
+            : 'border-error/40 bg-error-subtle'
+        }`}
+      >
+        <span
+          aria-hidden="true"
+          className={`text-base leading-none ${kind === 'success' ? 'text-success' : 'text-error'}`}
+        >
+          {kind === 'success' ? '✓' : '✕'}
+        </span>
+        <span className="text-text-primary">{text}</span>
+      </div>
     </div>
   )
 }

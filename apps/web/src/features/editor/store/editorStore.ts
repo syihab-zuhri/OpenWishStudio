@@ -26,6 +26,8 @@ interface EditorState {
   isGuest: boolean
   /** Bertambah setiap tombol Simpan manual ditekan; dipantau useAutosave. */
   saveRequestNonce: number
+  /** Status permintaan simpan manual — dipakai toast feedback di topbar. */
+  manualSaveState: 'idle' | 'saving' | 'success' | 'error'
 }
 
 interface EditorActions {
@@ -33,6 +35,7 @@ interface EditorActions {
   setSaveStatus: (status: SaveStatus) => void
   setDraftRevision: (revision: number) => void
   requestSaveNow: () => void
+  setManualSaveState: (state: EditorState['manualSaveState']) => void
   selectScene: (sceneId: string) => void
   addScene: () => void
   deleteScene: (sceneId: string) => void
@@ -121,6 +124,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   draftRevision: 0,
   isGuest: false,
   saveRequestNonce: 0,
+  manualSaveState: 'idle',
 
   // ── Project ─────────────────────────────────────────────────────────────────
 
@@ -141,7 +145,11 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   },
 
   requestSaveNow() {
-    set((s) => ({ saveRequestNonce: s.saveRequestNonce + 1 }))
+    set((s) => ({ saveRequestNonce: s.saveRequestNonce + 1, manualSaveState: 'saving' }))
+  },
+
+  setManualSaveState(state) {
+    set({ manualSaveState: state })
   },
 
   // ── Scene selection ──────────────────────────────────────────────────────────
@@ -424,5 +432,6 @@ export function initEditorStore(
     draftRevision: options?.revision ?? 0,
     isGuest: options?.isGuest ?? false,
     saveRequestNonce: 0,
+    manualSaveState: 'idle',
   })
 }

@@ -156,6 +156,19 @@ describe('useAutosave', () => {
     // Tanpa advanceTimersByTime — simpan langsung, bukan lewat debounce
     expect(mockFetch).toHaveBeenCalledOnce()
     expect(useEditorStore.getState().saveStatus).toBe('saved')
+    expect(useEditorStore.getState().manualSaveState).toBe('success')
+  })
+
+  it('reports manualSaveState "error" when the manual save fails', async () => {
+    mockFetch.mockImplementation(() => response(500))
+    renderHook(() => useAutosave())
+    await act(async () => {
+      useEditorStore.getState().requestSaveNow()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(useEditorStore.getState().manualSaveState).toBe('error')
+    expect(useEditorStore.getState().saveStatus).toBe('error')
   })
 
   it('re-saves edits made while a save is in flight', async () => {

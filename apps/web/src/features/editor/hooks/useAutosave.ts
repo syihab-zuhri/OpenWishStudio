@@ -8,6 +8,14 @@ import { saveGuestDraft, loadGuestDraft, hasGuestDraft } from '@/lib/guest-draft
 
 const DEBOUNCE_MS = 1500
 
+/** Laporkan hasil ke toast simpan manual — hanya bila ada permintaan aktif. */
+function reportManualResult(ok: boolean) {
+  const s = useEditorStore.getState()
+  if (s.manualSaveState === 'saving') {
+    s.setManualSaveState(ok ? 'success' : 'error')
+  }
+}
+
 export function useAutosave() {
   const projectId = useEditorStore((s) => s.projectId)
   const document = useEditorStore((s) => s.document)
@@ -20,6 +28,8 @@ export function useAutosave() {
   const inFlightRef = useRef(false)
   // Satu kali resync per rentetan konflik 409 supaya tidak berputar tanpa henti
   const resyncedRef = useRef(false)
+  // Simpan manual menunggu dokumen terkini — susulkan tanpa debounce
+  const chainImmediateRef = useRef(false)
   // Idempotency key draft tamu dipertahankan antar-save supaya impor tidak dobel
   const guestKeyRef = useRef<string | null>(null)
 
@@ -69,7 +79,9 @@ export function useAutosave() {
       savedAt: new Date().toISOString(),
     })
     // saveGuestDraft menelan error storage — verifikasi hasilnya sebelum klaim tersimpan
-    setSaveStatus(hasGuestDraft() ? 'saved' : 'error')
+    const ok = hasGuestDraft()
+    setSaveStatus(ok ? 'saved' : 'error')
+    reportManualResult(ok)
   }
 
   /** Ambil revisi terbaru dari server setelah 409 (tab lain menyimpan duluan). */
@@ -105,31 +117,50 @@ export function useAutosave() {
           setDraftRevision(json.revision)
         }
         resyncedRef.current = false
+        const state = useEditorStore.getState()
+        const docChanged = state.document !== doc
         // Kalau ada edit selama request berjalan, dokumen terbaru belum
         // tersimpan — jangan klaim "Tersimpan".
-        setSaveStatus(useEditorStore.getState().document !== doc ? 'unsaved' : 'saved')
+        setSaveStatus(docChanged ? 'unsaved' : 'saved')
+        if (docChanged) {
+          // Simpan manual belum tuntas sampai versi terkini ikut tersimpan
+          if (state.manualSaveState === 'saving') chainImmediateRef.current = true
+        } else {
+          reportManualResult(true)
+        }
       } else if (res.status === 409) {
         // Revisi server bergeser. Sekali: ambil revisi terbaru lalu antre ulang
         // (last-write-wins); kalau masih konflik juga, tampilkan error.
         if (!resyncedRef.current && (await resyncRevision())) {
           resyncedRef.current = true
           setSaveStatus('unsaved')
+          if (useEditorStore.getState().manualSaveState === 'saving') {
+            chainImmediateRef.current = true
+          }
         } else {
           setSaveStatus('error')
+          reportManualResult(false)
         }
       } else if (res.status === 0 || !res.status) {
         setSaveStatus('offline')
+        reportManualResult(false)
       } else {
         setSaveStatus('error')
+        reportManualResult(false)
       }
     } catch (err) {
       const isOffline = err instanceof TypeError && err.message.includes('fetch')
       setSaveStatus(isOffline ? 'offline' : 'error')
+      reportManualResult(false)
     } finally {
       inFlightRef.current = false
-      // Edit yang masuk saat request berjalan bisa kehilangan jadwalnya
-      // (timer sebelumnya jatuh ketika inFlight) — pastikan diantre ulang.
-      if (useEditorStore.getState().document !== doc) {
+      const latest = useEditorStore.getState()
+      if (chainImmediateRef.current) {
+        chainImmediateRef.current = false
+        void save(latest.document)
+      } else if (latest.document !== doc) {
+        // Edit yang masuk saat request berjalan bisa kehilangan jadwalnya
+        // (timer sebelumnya jatuh ketika inFlight) — pastikan diantre ulang.
         scheduleSave()
       }
     }
