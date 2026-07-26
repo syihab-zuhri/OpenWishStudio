@@ -5,9 +5,25 @@ import { created, serverError, unprocessable, notFound } from '@/lib/api/respons
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { v4 as uuidv4 } from 'uuid'
 
+// SVG is deliberately excluded: it carries script and is served from the
+// storage origin, where it would execute rather than render as an image.
+// The same allow-list is enforced at the bucket level so a client that lies
+// about Content-Type on the signed upload cannot get around it.
 const ALLOWED_MIMES: Record<'image' | 'audio', string[]> = {
-  image: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'],
+  image: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   audio: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/aac'],
+}
+
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'audio/mpeg': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/webm': 'weba',
+  'audio/aac': 'aac',
 }
 
 const MAX_SIZES: Record<'image' | 'audio', number> = {
@@ -63,7 +79,9 @@ export async function POST(request: NextRequest) {
   }
 
   const assetId = uuidv4()
-  const ext = fileName.split('.').pop() ?? 'bin'
+  // Derived from the validated MIME rather than the filename, which could
+  // otherwise inject slashes into the key.
+  const ext = EXT_BY_MIME[mime] ?? 'bin'
   const storageKey = `${user!.id}/${projectId}/${assetId}.${ext}`
 
   const serviceClient = await createSupabaseServiceClient()

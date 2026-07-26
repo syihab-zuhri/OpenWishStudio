@@ -43,6 +43,7 @@ export async function POST(
     .from('published_pages')
     .update({ status: 'unpublished' })
     .eq('id', page.id)
+    .eq('project_id', id)
 
   if (updateError) {
     console.error('POST /api/v1/projects/[id]/unpublish:', updateError.message)
@@ -58,7 +59,11 @@ export async function POST(
     metadata: {},
   })
 
-  await serviceClient.from('projects').update({ status: 'draft' }).eq('id', id)
+  await serviceClient
+    .from('projects')
+    .update({ status: 'draft' })
+    .eq('id', id)
+    .eq('owner_id', user!.id)
 
   return ok({ status: 'unpublished' })
 }

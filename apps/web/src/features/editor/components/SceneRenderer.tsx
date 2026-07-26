@@ -3,6 +3,25 @@
 import type { Scene, ElementNode } from '@openwish/project-schema'
 import type { CSSProperties } from 'react'
 
+// ─── Safe URL ─────────────────────────────────────────────────────────────────
+
+/**
+ * Render-boundary guard. The schema already allow-lists http(s), but documents
+ * can predate that validation, so nothing user-authored reaches an `href`,
+ * `src` or `url()` without passing through here.
+ */
+function safeUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+      ? parsed.href
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 // ─── Scene Renderer ───────────────────────────────────────────────────────────
 
 interface SceneRendererProps {
@@ -68,8 +87,10 @@ function sceneBackground(scene: Scene): CSSProperties {
     return { background: `linear-gradient(${bg.gradient.direction}deg, ${stops})` }
   }
   if (bg.type === 'image') {
+    const src = safeUrl(bg.src)
     return {
-      backgroundImage: bg.src ? `url(${bg.src})` : 'none',
+      // encodeURI stops a quote or paren in the URL from closing url(...)
+      backgroundImage: src ? `url("${encodeURI(src)}")` : 'none',
       backgroundSize: bg.objectFit === 'contain' ? 'contain' : bg.objectFit === 'fill' ? '100% 100%' : 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
@@ -222,10 +243,10 @@ function ElementContent({ element, scale, audioEnabled }: { element: ElementNode
       )
 
     case 'image':
-      return element.props.src || element.props.assetId ? (
+      return safeUrl(element.props.src) || element.props.assetId ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={element.props.src ?? ''}
+          src={safeUrl(element.props.src) ?? ''}
           alt={element.props.decorative ? '' : element.props.alt}
           aria-hidden={element.props.decorative}
           style={{
@@ -274,9 +295,9 @@ function ElementContent({ element, scale, audioEnabled }: { element: ElementNode
     case 'button':
       return (
         <a
-          href={element.props.url}
+          href={safeUrl(element.props.url)}
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener noreferrer nofollow"
           style={{
             display: 'flex',
             alignItems: 'center',

@@ -37,6 +37,12 @@ export async function POST(
     return notFound('Halaman tidak tersedia.')
   }
 
+  // Attribute the report when the reporter happens to be signed in; anonymous
+  // reports stay anonymous.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   let body: unknown
   try {
     body = await request.json()
@@ -67,9 +73,12 @@ export async function POST(
       reason,
       details: details ?? null,
       reporter_email: email ?? null,
+      reporter_user_id: user?.id ?? null,
       fingerprint_hash: fingerprint,
       status: 'open' as never,
-      created_by: page.id, // anonymous sentinel: reuse page id as non-PII created_by
+      // created_by has a FK to auth.users; the previous sentinel (the page id)
+      // failed that constraint, so every report insert returned 23503.
+      created_by: user?.id ?? null,
     })
     .select('id')
     .single()

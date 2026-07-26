@@ -1,7 +1,8 @@
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
+import { ProjectDocumentSchema } from '@openwish/project-schema'
 import { requireAuth } from '@/lib/api/auth'
-import { ok, created, serverError, unprocessable, notFound, conflict } from '@/lib/api/response'
+import { created, serverError, unprocessable, notFound, conflict } from '@/lib/api/response'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { v4 as uuidv4 } from 'uuid'
@@ -98,14 +99,22 @@ export async function POST(
 
   const versionNo = (versionCount ?? 0) + 1
 
-  const contentHash = await computeContentHash(project.draft_document)
+  // Last gate before the document becomes publicly reachable. Drafts can predate
+  // the current schema (or have been written by an older, laxer route), so the
+  // snapshot is built from the parsed result rather than the raw column.
+  const validated = ProjectDocumentSchema.safeParse(project.draft_document)
+  if (!validated.success) {
+    return unprocessable('Dokumen tidak valid. Buka editor dan simpan ulang sebelum publikasi.')
+  }
+
+  const contentHash = await computeContentHash(validated.data)
 
   // Insert immutable version snapshot
   const { error: versionError } = await serviceClient.from('project_versions').insert({
     id: versionId,
     project_id: id,
     version_no: versionNo,
-    document_snapshot: project.draft_document as never,
+    document_snapshot: validated.data as never,
     schema_version: project.schema_version ?? 1,
     created_by: user!.id,
     content_hash: contentHash,
@@ -128,6 +137,7 @@ export async function POST(
         published_at: publishedAt,
       })
       .eq('id', currentPage.id)
+      .eq('project_id', id)
 
     if (updateError) {
       console.error('POST /api/v1/projects/[id]/publish page update:', updateError.message)
@@ -159,7 +169,11 @@ export async function POST(
     metadata: { slug, versionNo, expiresAt: expiresAt ?? null },
   })
 
-  await serviceClient.from('projects').update({ status: 'published' }).eq('id', id)
+  await serviceClient
+    .from('projects')
+    .update({ status: 'published' })
+    .eq('id', id)
+    .eq('owner_id', user!.id)
 
   const url = `/p/${slug}`
   return created({ slug, url, versionNo, expiresAt: expiresAt ?? null })

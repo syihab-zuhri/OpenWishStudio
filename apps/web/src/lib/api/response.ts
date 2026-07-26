@@ -20,6 +20,10 @@ export function unauthorized() {
   return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 }
 
+export function forbidden(message = 'Akses ditolak.') {
+  return NextResponse.json({ error: message }, { status: 403 })
+}
+
 export function unprocessable(message: string) {
   return NextResponse.json({ error: message }, { status: 422 })
 }

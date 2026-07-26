@@ -18,12 +18,20 @@ export async function GET(request: NextRequest) {
     .limit(limit + 1)
 
   if (q) {
-    query = query.or(`title.ilike.%${q}%,artist.ilike.%${q}%`)
+    // `q` is interpolated into PostgREST's filter DSL, where a comma or paren
+    // would let the caller append filters to the OR group.
+    const safeQ = q.replace(/[,.()\\%_*]/g, '').slice(0, 100)
+    if (safeQ) {
+      query = query.or(`title.ilike.%${safeQ}%,artist.ilike.%${safeQ}%`)
+    }
   }
 
   if (cursor) {
     try {
       const { id } = JSON.parse(atob(cursor)) as { id: string }
+      if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) {
+        return badRequest('Cursor tidak valid.')
+      }
       query = query.gt('id', id)
     } catch {
       return badRequest('Cursor tidak valid.')

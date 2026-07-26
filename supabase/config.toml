@@ -56,14 +56,20 @@ refresh_token_reuse_interval = 10
 enable_signup = true
 enable_anonymous_sign_ins = false
 enable_manual_linking = false
+minimum_password_length = 12
 
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false
-secure_password_change = false
+# Was false: signup with an unverified address let anyone register while
+# claiming an email they do not control.
+enable_confirmations = true
+# Was false: a password could be changed without reauthenticating, turning any
+# stolen session into a full account takeover.
+secure_password_change = true
 otp_length = 6
-otp_expiry = 3600
+# Was 3600. Supabase flags anything above 900 as an excessive OTP lifetime.
+otp_expiry = 900
 
 [auth.sms]
 enable_signup = false

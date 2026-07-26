@@ -36,6 +36,7 @@ export async function DELETE(
     .from('assets')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('owner_id', user!.id)
 
   if (updateError) {
     console.error('DELETE /api/v1/assets/[id]:', updateError.message)

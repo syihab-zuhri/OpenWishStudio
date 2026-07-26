@@ -1,10 +1,35 @@
 import { z } from 'zod'
 
+// ─── Safe URL ────────────────────────────────────────────────────────────────
+
+/**
+ * `z.string().url()` only checks that `new URL()` parses — it accepts
+ * `javascript:`, `data:`, `vbscript:` and `file:`. These values reach `href`,
+ * `<img src>` and `background-image: url(...)` on public pages, so the scheme
+ * has to be allow-listed explicitly.
+ */
+export const SafeUrlSchema = z
+  .string()
+  .max(2048)
+  .refine((value) => {
+    try {
+      const { protocol } = new URL(value)
+      return protocol === 'https:' || protocol === 'http:'
+    } catch {
+      return false
+    }
+  }, 'URL harus menggunakan skema http atau https')
+
 // ─── Element Prop Schemas ────────────────────────────────────────────────────
 
 export const TextElementPropsSchema = z.object({
   content: z.string().max(5000),
-  fontFamily: z.string().optional(),
+  // Rendered into a CSS font-family value; keep it to font-name characters.
+  fontFamily: z
+    .string()
+    .max(100)
+    .regex(/^[a-zA-Z0-9\s,'"\-_]+$/, 'Nama font tidak valid')
+    .optional(),
   fontSize: z.number().min(4).max(300),
   fontWeight: z.number().optional(),
   fontStyle: z.enum(['normal', 'italic']).optional(),
@@ -16,7 +41,7 @@ export const TextElementPropsSchema = z.object({
 
 export const ImageElementPropsSchema = z.object({
   assetId: z.string().uuid().optional(),
-  src: z.string().url().optional(),
+  src: SafeUrlSchema.optional(),
   alt: z.string().max(500).default(''),
   objectFit: z.enum(['cover', 'contain', 'fill']).default('cover'),
   decorative: z.boolean().default(false),
@@ -38,7 +63,7 @@ export const IconElementPropsSchema = z.object({
 
 export const ButtonElementPropsSchema = z.object({
   label: z.string().max(200),
-  url: z.string().url(),
+  url: SafeUrlSchema,
   variant: z.enum(['primary', 'secondary', 'ghost']).default('primary'),
   backgroundColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   textColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
@@ -124,7 +149,7 @@ export const BackgroundSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('image'),
     assetId: z.string().uuid().optional(),
-    src: z.string().url().optional(),
+    src: SafeUrlSchema.optional(),
     objectFit: z.enum(['cover', 'contain', 'fill']).default('cover'),
   }),
 ])
@@ -158,7 +183,7 @@ export const ProjectDocumentSchema = z.object({
   schemaVersion: z.number().int().min(1),
   project: z.object({
     title: z.string().min(1).max(500),
-    locale: z.string().default('id-ID'),
+    locale: z.string().max(35).default('id-ID'),
     soundtrack: SoundtrackSchema.optional(),
   }),
   scenes: z.array(SceneSchema).min(1).max(50),

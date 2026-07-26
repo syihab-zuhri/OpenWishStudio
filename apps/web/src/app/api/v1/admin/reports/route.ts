@@ -1,31 +1,16 @@
 import { type NextRequest } from 'next/server'
-import { requireAuth } from '@/lib/api/auth'
+import { z } from 'zod'
+import { requireModerator } from '@/lib/api/auth'
 import { ok, serverError, badRequest } from '@/lib/api/response'
-import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
-async function requireModerator(
-  userId: string,
-  serviceClient: Awaited<ReturnType<typeof createSupabaseServiceClient>>,
-) {
-  const { data: profile } = await serviceClient
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle()
-
-  return profile?.role === 'moderator' || profile?.role === 'admin'
-}
+const CursorSchema = z.object({
+  created_at: z.string().datetime({ offset: true }),
+  id: z.string().uuid(),
+})
 
 export async function GET(request: NextRequest) {
-  const { user, error } = await requireAuth()
+  const { serviceClient, error } = await requireModerator()
   if (error) return error
-
-  const serviceClient = await createSupabaseServiceClient()
-
-  const isMod = await requireModerator(user!.id, serviceClient)
-  if (!isMod) {
-    return ok({ error: 'Akses moderator diperlukan.' }, 403)
-  }
 
   const { searchParams } = new URL(request.url)
   const cursor = searchParams.get('cursor')
@@ -36,7 +21,7 @@ export async function GET(request: NextRequest) {
     | 'actioned'
     | 'rejected'
 
-  let query = serviceClient
+  let query = serviceClient!
     .from('reports')
     .select('id, published_page_id, reason, details, status, resolution_note, created_at')
     .eq('status', status)
@@ -45,12 +30,16 @@ export async function GET(request: NextRequest) {
     .limit(limit + 1)
 
   if (cursor) {
+    // Interpolated into a PostgREST filter expression, so shape-check first.
+    let decoded: z.infer<typeof CursorSchema>
     try {
-      const { created_at, id } = JSON.parse(atob(cursor)) as { created_at: string; id: string }
-      query = query.or(`created_at.gt.${created_at},and(created_at.eq.${created_at},id.gt.${id})`)
+      decoded = CursorSchema.parse(JSON.parse(atob(cursor)))
     } catch {
       return badRequest('Cursor tidak valid.')
     }
+    query = query.or(
+      `created_at.gt.${decoded.created_at},and(created_at.eq.${decoded.created_at},id.gt.${decoded.id})`,
+    )
   }
 
   const { data, error: dbError } = await query

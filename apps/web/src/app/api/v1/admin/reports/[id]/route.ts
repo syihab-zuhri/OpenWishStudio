@@ -1,21 +1,7 @@
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
-import { requireAuth } from '@/lib/api/auth'
+import { requireModerator } from '@/lib/api/auth'
 import { ok, notFound, serverError, unprocessable } from '@/lib/api/response'
-import { createSupabaseServiceClient } from '@/lib/supabase/server'
-
-async function requireModerator(
-  userId: string,
-  serviceClient: Awaited<ReturnType<typeof createSupabaseServiceClient>>,
-) {
-  const { data: profile } = await serviceClient
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle()
-
-  return profile?.role === 'moderator' || profile?.role === 'admin'
-}
 
 const VALID_STATUSES = ['open', 'reviewing', 'actioned', 'rejected'] as const
 
@@ -29,17 +15,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const { user, error } = await requireAuth()
+  const { serviceClient, error } = await requireModerator()
   if (error) return error
 
-  const serviceClient = await createSupabaseServiceClient()
-
-  const isMod = await requireModerator(user!.id, serviceClient)
-  if (!isMod) {
-    return ok({ error: 'Akses moderator diperlukan.' }, 403)
-  }
-
-  const { data, error: dbError } = await serviceClient
+  const { data, error: dbError } = await serviceClient!
     .from('reports')
     .select(
       'id, published_page_id, reason, details, status, resolution_note, reviewed_by, reviewed_at, created_at',
@@ -61,15 +40,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const { user, error } = await requireAuth()
+  const { user, serviceClient, error } = await requireModerator()
   if (error) return error
-
-  const serviceClient = await createSupabaseServiceClient()
-
-  const isMod = await requireModerator(user!.id, serviceClient)
-  if (!isMod) {
-    return ok({ error: 'Akses moderator diperlukan.' }, 403)
-  }
 
   let body: unknown
   try {
@@ -83,7 +55,7 @@ export async function PATCH(
     return unprocessable('Parameter tidak valid.')
   }
 
-  const { data: report, error: updateError } = await serviceClient
+  const { data: report, error: updateError } = await serviceClient!
     .from('reports')
     .update({
       status: parsed.data.status,
@@ -101,7 +73,7 @@ export async function PATCH(
     return serverError()
   }
 
-  await serviceClient.from('audit_logs').insert({
+  await serviceClient!.from('audit_logs').insert({
     actor_id: user!.id,
     created_by: user!.id,
     action: 'report.update',

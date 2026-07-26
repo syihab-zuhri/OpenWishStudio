@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import type { ProjectDocument } from '@openwish/project-schema'
+import { ProjectDocumentSchema, type ProjectDocument } from '@openwish/project-schema'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { PublicViewer } from './_components/PublicViewer'
 
@@ -17,7 +17,7 @@ async function fetchPublishedPage(slug: string): Promise<{
 
   const { data: page, error: pageError } = await supabase
     .from('published_pages')
-    .select('id, status, expires_at, current_version_id, projects(title)')
+    .select('id, status, expires_at, current_version_id')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -33,15 +33,15 @@ async function fetchPublishedPage(slug: string): Promise<{
 
   if (verError || !version) return null
 
-  const title =
-    (page.projects as { title?: string } | null)?.title ??
-    (version.document_snapshot as ProjectDocument)?.project?.title ??
-    'Ucapan'
+  // Render boundary: a snapshot that no longer satisfies the schema is treated
+  // as missing rather than handed to the renderer as an unchecked cast.
+  const parsed = ProjectDocumentSchema.safeParse(version.document_snapshot)
+  if (!parsed.success) return null
 
   return {
-    document: version.document_snapshot as ProjectDocument,
+    document: parsed.data,
     expiresAt: page.expires_at,
-    title,
+    title: parsed.data.project.title || 'Ucapan',
   }
 }
 

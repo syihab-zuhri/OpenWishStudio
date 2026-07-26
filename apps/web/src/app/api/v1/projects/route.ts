@@ -1,7 +1,15 @@
 import { type NextRequest } from 'next/server'
+import { z } from 'zod'
 import { requireAuth } from '@/lib/api/auth'
 import { ok, created, serverError, unprocessable, badRequest } from '@/lib/api/response'
-import { createDefaultDocument } from '@openwish/project-schema'
+import { createDefaultDocument, ProjectDocumentSchema } from '@openwish/project-schema'
+
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
+
+const CursorSchema = z.object({
+  updated_at: z.string().datetime({ offset: true }),
+  id: z.string().uuid(),
+})
 
 export async function GET(request: NextRequest) {
   const { user, supabase, error } = await requireAuth()
@@ -27,14 +35,17 @@ export async function GET(request: NextRequest) {
 
   if (cursor) {
     // cursor = base64(JSON.stringify({ updated_at, id }))
+    // Values are interpolated into a PostgREST filter expression, so they are
+    // shape-checked before use rather than trusted as decoded.
+    let decoded: z.infer<typeof CursorSchema>
     try {
-      const { updated_at, id } = JSON.parse(atob(cursor)) as { updated_at: string; id: string }
-      query = query.or(
-        `updated_at.lt.${updated_at},and(updated_at.eq.${updated_at},id.lt.${id})`,
-      )
+      decoded = CursorSchema.parse(JSON.parse(atob(cursor)))
     } catch {
       return badRequest('Cursor tidak valid.')
     }
+    query = query.or(
+      `updated_at.lt.${decoded.updated_at},and(updated_at.eq.${decoded.updated_at},id.lt.${decoded.id})`,
+    )
   }
 
   const { data, error: dbError } = await query
@@ -60,6 +71,11 @@ export async function POST(request: NextRequest) {
   const { user, supabase, error } = await requireAuth()
   if (error) return error
 
+  const contentLength = request.headers.get('content-length')
+  if (contentLength && Number(contentLength) > MAX_DOCUMENT_BYTES) {
+    return unprocessable('Dokumen terlalu besar.')
+  }
+
   let body: { name?: string; document?: unknown }
   try {
     body = await request.json()
@@ -72,7 +88,18 @@ export async function POST(request: NextRequest) {
     return unprocessable('Nama kreasi terlalu panjang (maks. 120 karakter).')
   }
 
-  const rawDocument = body.document ?? JSON.parse(JSON.stringify(createDefaultDocument(name)))
+  // A caller-supplied document used to be stored unvalidated, which let it reach
+  // the public renderer via publish with none of the schema's limits applied.
+  let document
+  if (body.document === undefined) {
+    document = JSON.parse(JSON.stringify(createDefaultDocument(name)))
+  } else {
+    const parsedDocument = ProjectDocumentSchema.safeParse(body.document)
+    if (!parsedDocument.success) {
+      return unprocessable('Dokumen tidak valid.')
+    }
+    document = parsedDocument.data
+  }
 
   const { data: project, error: dbError } = await supabase
     .from('projects')
@@ -80,7 +107,7 @@ export async function POST(request: NextRequest) {
       name,
       owner_id: user!.id,
       created_by: user!.id,
-      draft_document: rawDocument as never,
+      draft_document: document as never,
       schema_version: 1,
     })
     .select('id, name, status, updated_at, created_at')

@@ -1,12 +1,15 @@
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
+import { ProjectDocumentSchema } from '@openwish/project-schema'
 import { requireAuth } from '@/lib/api/auth'
 import { ok, created, serverError, unprocessable } from '@/lib/api/response'
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
 
 const GuestImportSchema = z.object({
-  document: z.unknown(),
+  // Was z.unknown(): unvalidated JSON stored here reached the public renderer
+  // through publish, bypassing every limit the schema defines.
+  document: ProjectDocumentSchema,
   localProjectId: z.string().min(1).max(128),
   idempotencyKey: z.string().min(1).max(128),
 })
@@ -14,6 +17,11 @@ const GuestImportSchema = z.object({
 export async function POST(request: NextRequest) {
   const { user, supabase, error } = await requireAuth()
   if (error) return error
+
+  const contentLength = request.headers.get('content-length')
+  if (contentLength && Number(contentLength) > MAX_DOCUMENT_BYTES) {
+    return unprocessable('Draft ini tidak dapat diimpor. Unduh salinan pemulihan.')
+  }
 
   let body: unknown
   try {
@@ -29,8 +37,7 @@ export async function POST(request: NextRequest) {
 
   const { document, idempotencyKey } = parsed.data
 
-  const documentStr = JSON.stringify(document)
-  if (Buffer.byteLength(documentStr, 'utf8') > MAX_DOCUMENT_BYTES) {
+  if (Buffer.byteLength(JSON.stringify(document), 'utf8') > MAX_DOCUMENT_BYTES) {
     return unprocessable('Draft ini tidak dapat diimpor. Unduh salinan pemulihan.')
   }
 
@@ -48,11 +55,10 @@ export async function POST(request: NextRequest) {
     return ok({ projectId: existing.id, imported: false })
   }
 
-  const doc = document as Record<string, unknown>
-  const name = (doc?.name?.toString?.()?.trim() || 'Kreasi Impor').slice(0, 120)
+  const name = (document.project.title.trim() || 'Kreasi Impor').slice(0, 120)
 
   // Embed idempotency key in document metadata for dedup
-  const documentWithKey = { ...doc, __importIdempotencyKey: idempotencyKey }
+  const documentWithKey = { ...document, __importIdempotencyKey: idempotencyKey }
 
   const { data: project, error: dbError } = await supabase
     .from('projects')

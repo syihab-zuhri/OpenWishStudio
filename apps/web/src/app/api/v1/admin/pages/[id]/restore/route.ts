@@ -1,21 +1,7 @@
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
-import { requireAuth } from '@/lib/api/auth'
+import { requireModerator } from '@/lib/api/auth'
 import { ok, notFound, serverError, unprocessable } from '@/lib/api/response'
-import { createSupabaseServiceClient } from '@/lib/supabase/server'
-
-async function requireModeratorOrAdmin(
-  userId: string,
-  serviceClient: Awaited<ReturnType<typeof createSupabaseServiceClient>>,
-) {
-  const { data: profile } = await serviceClient
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle()
-
-  return profile?.role === 'moderator' || profile?.role === 'admin'
-}
 
 const RestoreSchema = z.object({
   reason: z.string().min(1).max(2000),
@@ -26,15 +12,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const { user, error } = await requireAuth()
+  const { user, serviceClient, error } = await requireModerator()
   if (error) return error
-
-  const serviceClient = await createSupabaseServiceClient()
-
-  const isMod = await requireModeratorOrAdmin(user!.id, serviceClient)
-  if (!isMod) {
-    return ok({ error: 'Akses moderator diperlukan.' }, 403)
-  }
 
   let body: unknown
   try {
@@ -48,7 +27,7 @@ export async function POST(
     return unprocessable('Alasan diperlukan.')
   }
 
-  const { data: page } = await serviceClient
+  const { data: page } = await serviceClient!
     .from('published_pages')
     .select('id, status')
     .eq('id', id)
@@ -62,7 +41,7 @@ export async function POST(
     return ok({ status: 'published' })
   }
 
-  const { error: updateError } = await serviceClient
+  const { error: updateError } = await serviceClient!
     .from('published_pages')
     .update({ status: 'published' })
     .eq('id', id)
@@ -72,7 +51,7 @@ export async function POST(
     return serverError()
   }
 
-  await serviceClient.from('audit_logs').insert({
+  await serviceClient!.from('audit_logs').insert({
     actor_id: user!.id,
     created_by: user!.id,
     action: 'page.restore',

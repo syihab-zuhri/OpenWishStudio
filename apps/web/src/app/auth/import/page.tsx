@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 import { loadGuestDraft, clearGuestDraft } from '@/lib/guest-draft'
+import { safeNext } from '@/lib/safe-next'
 
 export default function ImportPage() {
   return (
@@ -18,7 +19,7 @@ type Phase = 'importing' | 'done' | 'failed' | 'nothing'
 function ImportFlow() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const next = searchParams.get('next') ?? '/dashboard'
+  const next = safeNext(searchParams.get('next'))
 
   const [phase, setPhase] = useState<Phase>('importing')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)

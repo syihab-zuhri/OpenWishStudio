@@ -1,6 +1,12 @@
 import { type NextRequest } from 'next/server'
+import { z } from 'zod'
 import { requireAuth } from '@/lib/api/auth'
 import { ok, serverError, badRequest } from '@/lib/api/response'
+
+const CursorSchema = z.object({
+  created_at: z.string().datetime({ offset: true }),
+  id: z.string().uuid(),
+})
 
 export async function GET(request: NextRequest) {
   const { user, supabase, error } = await requireAuth()
@@ -30,12 +36,16 @@ export async function GET(request: NextRequest) {
   }
 
   if (cursor) {
+    // Interpolated into a PostgREST filter expression, so shape-check first.
+    let decoded: z.infer<typeof CursorSchema>
     try {
-      const { created_at, id } = JSON.parse(atob(cursor)) as { created_at: string; id: string }
-      query = query.or(`created_at.lt.${created_at},and(created_at.eq.${created_at},id.lt.${id})`)
+      decoded = CursorSchema.parse(JSON.parse(atob(cursor)))
     } catch {
       return badRequest('Cursor tidak valid.')
     }
+    query = query.or(
+      `created_at.lt.${decoded.created_at},and(created_at.eq.${decoded.created_at},id.lt.${decoded.id})`,
+    )
   }
 
   const { data, error: dbError } = await query

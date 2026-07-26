@@ -4,6 +4,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useState, useEffect } from 'react'
 import { hasGuestDraft } from '@/lib/guest-draft'
+import { safeNext } from '@/lib/safe-next'
 
 export default function LoginPage() {
   return (
@@ -15,7 +16,7 @@ export default function LoginPage() {
 
 function LoginForm() {
   const searchParams = useSearchParams()
-  const nextPath = searchParams.get('next') ?? '/dashboard'
+  const nextPath = safeNext(searchParams.get('next'))
 
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState<'email' | 'google' | 'github' | null>(null)
