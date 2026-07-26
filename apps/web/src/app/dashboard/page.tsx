@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProjectCardMenu } from './_components/ProjectActions'
+import { SceneThumbnail } from '@/features/viewer/components/SceneThumbnail'
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()
@@ -13,9 +14,11 @@ export default async function DashboardPage() {
     redirect('/auth/login?next=/dashboard')
   }
 
+  // first_scene: hanya scene pertama yang diambil — bukan seluruh draft_document
+  // (bisa sampai 5 MB per kreasi) — cukup untuk thumbnail kartu.
   const { data: projects, error } = await supabase
     .from('projects')
-    .select('id, name, status, updated_at, created_at')
+    .select('id, name, status, updated_at, created_at, first_scene:draft_document->scenes->0')
     .is('deleted_at', null)
     .order('updated_at', { ascending: false })
     .limit(50)
@@ -101,6 +104,7 @@ function ProjectCard({
     name: string
     status: string
     updated_at: string
+    first_scene: unknown
   }
 }) {
   const statusLabel: Record<string, { label: string; color: string }> = {
@@ -118,11 +122,9 @@ function ProjectCard({
 
   return (
     <div className="bg-surface group flex flex-col rounded-md shadow-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-1 hover:shadow-md">
-      {/* Thumbnail placeholder */}
+      {/* Thumbnail: scene pertama dari draft */}
       <a href={`/editor/${project.id}`} className="block flex-1">
-        <div className="bg-canvas flex h-40 items-center justify-center rounded-t-md">
-          <span className="text-3xl opacity-30">🎨</span>
-        </div>
+        <SceneThumbnail scene={project.first_scene} />
         {/* Footer */}
         <div className="p-3">
           <p className="text-text-primary truncate text-sm font-medium">{project.name}</p>
