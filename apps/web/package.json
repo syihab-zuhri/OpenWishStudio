@@ -15,15 +15,16 @@
     "@openwish/project-schema": "workspace:*",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
-    "uuid": "^11.1.0",
     "next": "^15.3.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "zustand": "^5.0.5",
-    "zod": "^3.25.67"
+    "uuid": "^11.1.0",
+    "zod": "^3.25.67",
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@openwish/config": "workspace:*",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.5.0",
