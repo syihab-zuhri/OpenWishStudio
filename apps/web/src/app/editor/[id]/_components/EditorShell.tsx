@@ -21,12 +21,23 @@ interface Props {
   initialName: string
   initialDocument: unknown
   initialRevision: number
+  /** 'guest' = draft disimpan di perangkat, tanpa akun. */
+  mode?: 'cloud' | 'guest'
 }
 
-export default function EditorShell({ projectId, initialName, initialDocument }: Props) {
+export default function EditorShell({
+  projectId,
+  initialName,
+  initialDocument,
+  initialRevision,
+  mode = 'cloud',
+}: Props) {
   // Bootstrap store once on mount
   useEffect(() => {
-    initEditorStore(projectId, initialName, initialDocument as ProjectDocument)
+    initEditorStore(projectId, initialName, initialDocument as ProjectDocument, {
+      revision: initialRevision ?? 0,
+      isGuest: mode === 'guest',
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
@@ -37,6 +48,7 @@ export default function EditorShell({ projectId, initialName, initialDocument }:
 
 function EditorLayout() {
   const projectId = useEditorStore((s) => s.projectId)
+  const isGuest = useEditorStore((s) => s.isGuest)
   const saveStatus = useEditorStore((s) => s.saveStatus)
   const undo = useEditorStore((s) => s.undo)
   const redo = useEditorStore((s) => s.redo)
@@ -84,9 +96,9 @@ function EditorLayout() {
       <header className="bg-surface shadow-xs z-10 flex h-12 shrink-0 items-center justify-between px-2 sm:px-4">
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
           <a
-            href="/dashboard"
+            href={isGuest ? '/' : '/dashboard'}
             className="text-text-muted hover:bg-surface-hover hover:text-text-primary shrink-0 rounded-sm p-1.5 transition-colors"
-            aria-label="Kembali ke dashboard"
+            aria-label={isGuest ? 'Kembali ke beranda' : 'Kembali ke dashboard'}
           >
             <svg
               className="h-4 w-4"
@@ -150,7 +162,7 @@ function EditorLayout() {
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <SaveStatusBadge status={saveStatus} />
           <a
-            href={`/editor/${projectId}/preview`}
+            href={isGuest ? '/editor/guest/preview' : `/editor/${projectId}/preview`}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Buka preview"
@@ -176,13 +188,22 @@ function EditorLayout() {
             </svg>
             <span className="hidden sm:inline">Preview</span>
           </a>
-          <button
-            type="button"
-            onClick={() => setShowPublish(true)}
-            className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.06em] transition-colors"
-          >
-            Publish
-          </button>
+          {isGuest ? (
+            <a
+              href="/auth/login?next=/dashboard"
+              className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.06em] transition-colors"
+            >
+              Masuk &amp; Simpan
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowPublish(true)}
+              className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.06em] transition-colors"
+            >
+              Publish
+            </button>
+          )}
         </div>
       </header>
 

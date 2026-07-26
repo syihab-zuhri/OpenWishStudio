@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
+import type { Route } from 'next'
 import type { ProjectDocument } from '@openwish/project-schema'
 import { SceneStack } from '@/features/viewer/components/SceneStack'
 import { SoundtrackPlayer } from '@/features/viewer/components/SoundtrackPlayer'
@@ -10,9 +11,11 @@ interface Props {
   projectId: string
   projectName: string
   document: ProjectDocument
+  /** Tujuan tombol kembali; default ke editor cloud milik project. */
+  backHref?: Route
 }
 
-export function DraftPreview({ projectId, projectName, document }: Props) {
+export function DraftPreview({ projectId, projectName, document, backHref }: Props) {
   const soundtrack = document.project.soundtrack
   const [audioEnabled, setAudioEnabled] = useState(false)
   const [showAudioPrompt, setShowAudioPrompt] = useState(
@@ -36,7 +39,7 @@ export function DraftPreview({ projectId, projectName, document }: Props) {
       <div className="bg-surface-2 flex w-full items-center justify-between gap-4 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <Link
-            href={`/editor/${projectId}`}
+            href={backHref ?? (`/editor/${projectId}` as Route)}
             className="text-text-secondary hover:text-text-primary flex items-center gap-1.5 text-sm transition-colors"
             aria-label="Kembali ke editor"
           >

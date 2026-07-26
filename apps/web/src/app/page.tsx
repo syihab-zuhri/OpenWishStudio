@@ -80,7 +80,7 @@ function HeroSection() {
         </p>
         <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <Link
-            href="/dashboard"
+            href="/editor/guest"
             className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-8 py-3.5 text-sm font-semibold uppercase tracking-[0.06em] transition-colors"
           >
             Buat Ucapan Sekarang
@@ -234,7 +234,7 @@ function CtaSection() {
           Gratis selamanya untuk ucapan personal. Tidak perlu kartu kredit.
         </p>
         <Link
-          href="/dashboard"
+          href="/editor/guest"
           className="bg-primary text-text-on-primary hover:bg-primary-hover mt-8 inline-block rounded-sm px-8 py-3.5 text-sm font-semibold uppercase tracking-[0.06em] transition-colors"
         >
           Mulai Sekarang — Gratis

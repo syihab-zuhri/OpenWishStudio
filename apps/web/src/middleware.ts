@@ -33,8 +33,11 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // /editor/guest sengaja terbuka: mode tamu menyimpan draft di perangkat
+  const isGuestEditor = pathname === '/editor/guest' || pathname.startsWith('/editor/guest/')
+
   const protectedPrefixes = ['/dashboard', '/editor']
-  const isProtected = protectedPrefixes.some((p) => pathname.startsWith(p))
+  const isProtected = !isGuestEditor && protectedPrefixes.some((p) => pathname.startsWith(p))
 
   if (isProtected && !user) {
     const loginUrl = request.nextUrl.clone()

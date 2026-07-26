@@ -20,11 +20,16 @@ interface EditorState {
   saveStatus: SaveStatus
   past: HistoryFrame[]
   future: HistoryFrame[]
+  /** Revisi draft terakhir yang diketahui dari server (baseRevision autosave). */
+  draftRevision: number
+  /** Mode tamu: draft disimpan di perangkat, bukan ke server. */
+  isGuest: boolean
 }
 
 interface EditorActions {
   setProjectName: (name: string) => void
   setSaveStatus: (status: SaveStatus) => void
+  setDraftRevision: (revision: number) => void
   selectScene: (sceneId: string) => void
   addScene: () => void
   deleteScene: (sceneId: string) => void
@@ -110,6 +115,8 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   saveStatus: 'saved',
   past: [],
   future: [],
+  draftRevision: 0,
+  isGuest: false,
 
   // ── Project ─────────────────────────────────────────────────────────────────
 
@@ -123,6 +130,10 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
 
   setSaveStatus(status) {
     set({ saveStatus: status })
+  },
+
+  setDraftRevision(revision) {
+    set({ draftRevision: revision })
   },
 
   // ── Scene selection ──────────────────────────────────────────────────────────
@@ -386,7 +397,12 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
 
 // ─── Init helper ──────────────────────────────────────────────────────────────
 
-export function initEditorStore(projectId: string, projectName: string, document: ProjectDocument) {
+export function initEditorStore(
+  projectId: string,
+  projectName: string,
+  document: ProjectDocument,
+  options?: { revision?: number; isGuest?: boolean },
+) {
   useEditorStore.setState({
     projectId,
     projectName,
@@ -397,5 +413,7 @@ export function initEditorStore(projectId: string, projectName: string, document
     saveStatus: 'saved',
     past: [],
     future: [],
+    draftRevision: options?.revision ?? 0,
+    isGuest: options?.isGuest ?? false,
   })
 }
