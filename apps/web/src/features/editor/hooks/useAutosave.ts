@@ -14,22 +14,28 @@ export function useAutosave() {
   const saveStatus = useEditorStore((s) => s.saveStatus)
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
   const setDraftRevision = useEditorStore((s) => s.setDraftRevision)
-  const isGuest = useEditorStore((s) => s.isGuest)
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inFlightRef = useRef(false)
+  // Satu kali resync per rentetan konflik 409 supaya tidak berputar tanpa henti
+  const resyncedRef = useRef(false)
   // Idempotency key draft tamu dipertahankan antar-save supaya impor tidak dobel
   const guestKeyRef = useRef<string | null>(null)
+
+  function scheduleSave() {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      const state = useEditorStore.getState()
+      if (state.isGuest) saveLocal(state.document)
+      else void save(state.document)
+    }, DEBOUNCE_MS)
+  }
 
   useEffect(() => {
     if (saveStatus !== 'unsaved') return
     if (!projectId) return
 
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      if (isGuest) saveLocal(document)
-      else void save(document)
-    }, DEBOUNCE_MS)
+    scheduleSave()
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
@@ -54,6 +60,20 @@ export function useAutosave() {
     setSaveStatus(hasGuestDraft() ? 'saved' : 'error')
   }
 
+  /** Ambil revisi terbaru dari server setelah 409 (tab lain menyimpan duluan). */
+  async function resyncRevision(): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/v1/projects/${projectId}/draft`)
+      if (!res.ok) return false
+      const json = (await res.json()) as { revision?: number }
+      if (typeof json.revision !== 'number') return false
+      setDraftRevision(json.revision)
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async function save(doc: ProjectDocument) {
     if (inFlightRef.current) return
     inFlightRef.current = true
@@ -72,9 +92,19 @@ export function useAutosave() {
         if (typeof json.revision === 'number') {
           setDraftRevision(json.revision)
         }
-        setSaveStatus('saved')
+        resyncedRef.current = false
+        // Kalau ada edit selama request berjalan, dokumen terbaru belum
+        // tersimpan — jangan klaim "Tersimpan".
+        setSaveStatus(useEditorStore.getState().document !== doc ? 'unsaved' : 'saved')
       } else if (res.status === 409) {
-        setSaveStatus('error')
+        // Revisi server bergeser. Sekali: ambil revisi terbaru lalu antre ulang
+        // (last-write-wins); kalau masih konflik juga, tampilkan error.
+        if (!resyncedRef.current && (await resyncRevision())) {
+          resyncedRef.current = true
+          setSaveStatus('unsaved')
+        } else {
+          setSaveStatus('error')
+        }
       } else if (res.status === 0 || !res.status) {
         setSaveStatus('offline')
       } else {
@@ -85,6 +115,11 @@ export function useAutosave() {
       setSaveStatus(isOffline ? 'offline' : 'error')
     } finally {
       inFlightRef.current = false
+      // Edit yang masuk saat request berjalan bisa kehilangan jadwalnya
+      // (timer sebelumnya jatuh ketika inFlight) — pastikan diantre ulang.
+      if (useEditorStore.getState().document !== doc) {
+        scheduleSave()
+      }
     }
   }
 }

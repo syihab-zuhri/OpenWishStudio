@@ -145,6 +145,92 @@ describe('useAutosave', () => {
     expect(useEditorStore.getState().saveStatus).toBe('saved')
   })
 
+  it('re-saves edits made while a save is in flight', async () => {
+    let resolveFirst!: () => void
+    let call = 0
+    mockFetch.mockImplementation(() => {
+      call += 1
+      if (call === 1) {
+        return new Promise((resolve) => {
+          resolveFirst = () =>
+            resolve({ ok: true, status: 200, json: () => Promise.resolve({ revision: 1 }) })
+        })
+      }
+      return ok200(2)
+    })
+    useEditorStore.getState().setSaveStatus('unsaved')
+    renderHook(() => useAutosave())
+    await act(async () => {
+      vi.advanceTimersByTime(1500)
+    })
+    // Edit masuk saat request pertama masih berjalan
+    await act(async () => {
+      useEditorStore.getState().setProjectName('Judul Baru')
+    })
+    await act(async () => {
+      resolveFirst()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // Save pertama selesai tapi dokumen sudah berubah — harus diantre ulang
+    expect(useEditorStore.getState().saveStatus).toBe('unsaved')
+    await act(async () => {
+      vi.advanceTimersByTime(1500)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    const [, opts2] = mockFetch.mock.calls[1] as [string, RequestInit]
+    const body2 = JSON.parse(opts2.body as string) as {
+      document: { project: { title: string } }
+    }
+    expect(body2.document.project.title).toBe('Judul Baru')
+    expect(useEditorStore.getState().saveStatus).toBe('saved')
+  })
+
+  it('auto-resyncs the revision after a 409 and retries the save', async () => {
+    let patchCount = 0
+    mockFetch.mockImplementation((_url: string, opts?: RequestInit) => {
+      if (opts?.method === 'PATCH') {
+        patchCount += 1
+        if (patchCount === 1) return response(409)
+        return ok200(8)
+      }
+      // GET /draft untuk resync revisi
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ document: null, revision: 7 }),
+      })
+    })
+    useEditorStore.getState().setSaveStatus('unsaved')
+    renderHook(() => useAutosave())
+    await act(async () => {
+      vi.advanceTimersByTime(1500)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(useEditorStore.getState().draftRevision).toBe(7)
+    expect(useEditorStore.getState().saveStatus).toBe('unsaved')
+    await act(async () => {
+      vi.advanceTimersByTime(1500)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const patchCalls = mockFetch.mock.calls.filter(
+      (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
+    )
+    expect(patchCalls).toHaveLength(2)
+    const retryBody = JSON.parse((patchCalls[1][1] as RequestInit).body as string) as {
+      baseRevision: number
+    }
+    expect(retryBody.baseRevision).toBe(7)
+    expect(useEditorStore.getState().saveStatus).toBe('saved')
+    expect(useEditorStore.getState().draftRevision).toBe(8)
+  })
+
   it('sends baseRevision from the store and updates it after a save', async () => {
     mockFetch.mockImplementation(() => ok200(6))
     initEditorStore('proj-1', 'Test', createDefaultDocument('Test'), { revision: 5 })

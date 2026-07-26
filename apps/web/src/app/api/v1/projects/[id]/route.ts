@@ -2,6 +2,7 @@ import { type NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/api/auth'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { ok, noContent, notFound, serverError, unprocessable } from '@/lib/api/response'
+import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
 
@@ -59,7 +60,11 @@ export async function DELETE(_request: NextRequest, { params }: { params: Params
   const { data: existing } = await fetchOwnedProject(supabase, user!.id, id)
   if (!existing) return notFound()
 
-  const { error: dbError } = await supabase
+  // Soft delete lewat service client: WITH CHECK kebijakan update di database
+  // menolak baris yang deleted_at-nya terisi, sehingga update via klien user
+  // selalu gagal RLS. Kepemilikan sudah diverifikasi fetchOwnedProject di atas.
+  const serviceClient = await createSupabaseServiceClient()
+  const { error: dbError } = await serviceClient
     .from('projects')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
