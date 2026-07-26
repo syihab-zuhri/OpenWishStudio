@@ -1,0 +1,35 @@
+{
+  "name": "openwish-studio",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "pnpm --filter @openwish/web dev",
+    "build": "pnpm --filter @openwish/web build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm -r test:unit",
+    "test:integration": "pnpm -r test:integration",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:migrate": "supabase db push",
+    "db:reset": "supabase db reset",
+    "db:generate-types": "supabase gen types typescript --project-id qoqtfnajpwpwgtqlousl > packages/project-schema/src/database.types.ts",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.0",
+    "turbo": "^2.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{js,mjs,cjs,json,css,md,yaml,yml}": [
+      "prettier --write"
+    ]
+  }
+}

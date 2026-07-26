@@ -1,0 +1,221 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { useEditorStore, initEditorStore } from './editorStore'
+import { createDefaultDocument, createDefaultScene } from '@openwish/project-schema'
+import { v4 as uuidv4 } from 'uuid'
+import type { ElementNode } from '@openwish/project-schema'
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function makeTextElement(overrides = {}): ElementNode {
+  return {
+    id: uuidv4(),
+    type: 'text',
+    x: 10,
+    y: 20,
+    width: 200,
+    height: 50,
+    rotation: 0,
+    zIndex: 0,
+    locked: false,
+    props: {
+      content: 'Hello',
+      fontSize: 16,
+      color: '#000000',
+    },
+    ...overrides,
+  } as ElementNode
+}
+
+function getState() {
+  return useEditorStore.getState()
+}
+
+// ─── Setup ────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  const doc = createDefaultDocument('Test')
+  initEditorStore('project-1', 'Test', doc)
+})
+
+// ─── addScene ─────────────────────────────────────────────────────────────────
+
+describe('addScene', () => {
+  it('increases scene count and selects new scene', () => {
+    const before = getState().document.scenes.length
+    getState().addScene()
+    const after = getState()
+    expect(after.document.scenes.length).toBe(before + 1)
+    expect(after.selectedSceneId).toBe(after.document.scenes.at(-1)!.id)
+  })
+
+  it('pushes to past history', () => {
+    const pastBefore = getState().past.length
+    getState().addScene()
+    expect(getState().past.length).toBe(pastBefore + 1)
+  })
+
+  it('sets saveStatus to unsaved', () => {
+    getState().addScene()
+    expect(getState().saveStatus).toBe('unsaved')
+  })
+})
+
+// ─── deleteScene ──────────────────────────────────────────────────────────────
+
+describe('deleteScene', () => {
+  it('does nothing when only one scene exists', () => {
+    const sceneId = getState().document.scenes[0].id
+    getState().deleteScene(sceneId)
+    expect(getState().document.scenes.length).toBe(1)
+  })
+
+  it('removes scene when more than one exists', () => {
+    getState().addScene()
+    const scenes = getState().document.scenes
+    expect(scenes.length).toBe(2)
+    getState().deleteScene(scenes[0].id)
+    expect(getState().document.scenes.length).toBe(1)
+  })
+
+  it('adjusts selectedSceneId when active scene is deleted', () => {
+    getState().addScene()
+    const [first, second] = getState().document.scenes
+    getState().selectScene(second.id)
+    getState().deleteScene(second.id)
+    expect(getState().selectedSceneId).toBe(first.id)
+  })
+
+  it('normalizes scene order values after deletion', () => {
+    getState().addScene()
+    getState().addScene()
+    const [, second] = getState().document.scenes
+    getState().deleteScene(second.id)
+    getState().document.scenes.forEach((sc, i) => {
+      expect(sc.order).toBe(i)
+    })
+  })
+})
+
+// ─── reorderScene ─────────────────────────────────────────────────────────────
+
+describe('reorderScene', () => {
+  it('moves a scene to the correct index and reassigns order values', () => {
+    getState().addScene()
+    getState().addScene()
+    const [a, , c] = getState().document.scenes
+    getState().reorderScene(c.id, 0) // bring last scene to front
+    const reordered = getState().document.scenes
+    expect(reordered[0].id).toBe(c.id)
+    reordered.forEach((sc, i) => {
+      expect(sc.order).toBe(i)
+    })
+  })
+})
+
+// ─── addElement ───────────────────────────────────────────────────────────────
+
+describe('addElement', () => {
+  it('sets selectedElementId to the new element ID', () => {
+    const sceneId = getState().document.scenes[0].id
+    const el = makeTextElement()
+    getState().addElement(sceneId, el)
+    expect(getState().selectedElementId).toBe(el.id)
+  })
+
+  it('appends element to correct scene', () => {
+    const sceneId = getState().document.scenes[0].id
+    const el = makeTextElement()
+    getState().addElement(sceneId, el)
+    const scene = getState().document.scenes.find((sc) => sc.id === sceneId)!
+    expect(scene.elements.some((e) => e.id === el.id)).toBe(true)
+  })
+})
+
+// ─── updateElement vs commitElementDrag ───────────────────────────────────────
+
+describe('updateElement', () => {
+  it('does NOT push to past (live drag preview)', () => {
+    const sceneId = getState().document.scenes[0].id
+    const el = makeTextElement()
+    getState().addElement(sceneId, el)
+    const pastLen = getState().past.length
+    getState().updateElement(sceneId, el.id, { x: 50 })
+    expect(getState().past.length).toBe(pastLen)
+  })
+
+  it('updates element x/y in document', () => {
+    const sceneId = getState().document.scenes[0].id
+    const el = makeTextElement()
+    getState().addElement(sceneId, el)
+    getState().updateElement(sceneId, el.id, { x: 99, y: 77 })
+    const updated = getState().document.scenes[0].elements.find((e) => e.id === el.id)!
+    expect(updated.x).toBe(99)
+    expect(updated.y).toBe(77)
+  })
+})
+
+describe('commitElementDrag', () => {
+  it('pushes one frame to past', () => {
+    const sceneId = getState().document.scenes[0].id
+    const el = makeTextElement()
+    getState().addElement(sceneId, el)
+    const pastLen = getState().past.length
+    getState().commitElementDrag(sceneId, el.id, { x: 100, y: 200 })
+    expect(getState().past.length).toBe(pastLen + 1)
+  })
+})
+
+// ─── undo / redo ──────────────────────────────────────────────────────────────
+
+describe('undo', () => {
+  it('restores previous document state', () => {
+    const docBefore = getState().document
+    getState().addScene()
+    getState().undo()
+    expect(getState().document.scenes.length).toBe(docBefore.scenes.length)
+  })
+
+  it('moves current doc to future stack', () => {
+    getState().addScene()
+    expect(getState().future.length).toBe(0)
+    getState().undo()
+    expect(getState().future.length).toBe(1)
+  })
+})
+
+describe('redo', () => {
+  it('reapplies undone state', () => {
+    getState().addScene()
+    const afterAdd = getState().document.scenes.length
+    getState().undo()
+    getState().redo()
+    expect(getState().document.scenes.length).toBe(afterAdd)
+  })
+})
+
+// ─── History limit ────────────────────────────────────────────────────────────
+
+describe('history limit', () => {
+  it('caps past at 50 frames', () => {
+    for (let i = 0; i < 60; i++) {
+      getState().addScene()
+    }
+    expect(getState().past.length).toBeLessThanOrEqual(50)
+  })
+})
+
+// ─── setZoom ──────────────────────────────────────────────────────────────────
+
+describe('setZoom', () => {
+  it('clamps to [0.25, 2]', () => {
+    getState().setZoom(0)
+    expect(getState().zoom).toBe(0.25)
+    getState().setZoom(10)
+    expect(getState().zoom).toBe(2)
+  })
+
+  it('accepts value within range', () => {
+    getState().setZoom(1.5)
+    expect(getState().zoom).toBe(1.5)
+  })
+})

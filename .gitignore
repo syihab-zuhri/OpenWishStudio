@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnp
+.pnp.*
+
+# Build output and caches
+.next/
+out/
+dist/
+build/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Environment files (keep the documented template)
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel/
+
+# Supabase local state
+supabase/.branches/
+supabase/.temp/
+
+# Local AI/editor settings
+.claude/settings.local.json
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+openwish-studio-blueprint
