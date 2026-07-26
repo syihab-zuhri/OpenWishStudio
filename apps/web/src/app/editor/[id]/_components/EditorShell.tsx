@@ -53,6 +53,7 @@ function EditorLayout() {
   const requestSaveNow = useEditorStore((s) => s.requestSaveNow)
   const manualSaveState = useEditorStore((s) => s.manualSaveState)
   const setManualSaveState = useEditorStore((s) => s.setManualSaveState)
+  const lastSaveError = useEditorStore((s) => s.lastSaveError)
   const undo = useEditorStore((s) => s.undo)
   const redo = useEditorStore((s) => s.redo)
   const canUndo = useEditorStore((s) => s.past.length > 0)
@@ -173,7 +174,7 @@ function EditorLayout() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <SaveStatusBadge status={saveStatus} />
+          <SaveStatusBadge status={saveStatus} detail={lastSaveError} />
           <button
             type="button"
             onClick={requestSaveNow}
@@ -253,7 +254,7 @@ function EditorLayout() {
         <SaveToast kind="success" text="Perubahan berhasil disimpan." />
       )}
       {manualSaveState === 'error' && (
-        <SaveToast kind="error" text="Gagal menyimpan. Periksa koneksi lalu coba lagi." />
+        <SaveToast kind="error" text={lastSaveError ?? 'Gagal menyimpan. Coba lagi.'} />
       )}
 
       {/* Editor body */}
@@ -378,10 +379,13 @@ const statusMap: Record<SaveStatus, { label: string; className: string }> = {
   offline: { label: 'Offline', className: 'text-warning' },
 }
 
-function SaveStatusBadge({ status }: { status: SaveStatus }) {
+function SaveStatusBadge({ status, detail }: { status: SaveStatus; detail?: string | null }) {
   const { label, className } = statusMap[status]
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs ${className}`} title={label}>
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs ${className}`}
+      title={detail ?? label}
+    >
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
       <span className="hidden sm:inline">{label}</span>
     </span>
@@ -855,6 +859,8 @@ function ElementInspector({
             value={element.rotation}
             onChange={(v) => onUpdate({ rotation: v })}
             step={1}
+            min={-360}
+            max={360}
           />
           <div className="flex items-center gap-2">
             <label className="text-text-secondary flex cursor-pointer items-center gap-1.5 text-xs">
@@ -917,7 +923,8 @@ function ElementPropsInspector({
               label="Ukuran"
               value={p.fontSize ?? 16}
               onChange={(v) => onUpdateProps({ fontSize: v })}
-              min={1}
+              min={4}
+              max={300}
             />
             <NumInput
               label="Berat"
@@ -980,6 +987,7 @@ function ElementPropsInspector({
           label="Garis tepi"
           value={p.stroke ?? ''}
           onChange={(v) => onUpdateProps({ stroke: v || undefined })}
+          allowEmpty
         />
         {p.stroke && (
           <NumInput
@@ -987,6 +995,7 @@ function ElementPropsInspector({
             value={p.strokeWidth ?? 1}
             onChange={(v) => onUpdateProps({ strokeWidth: v })}
             min={0}
+            max={100}
           />
         )}
         {p.shape === 'rectangle' && (
@@ -995,6 +1004,7 @@ function ElementPropsInspector({
             value={p.borderRadius ?? 0}
             onChange={(v) => onUpdateProps({ borderRadius: v })}
             min={0}
+            max={50}
           />
         )}
       </InspectorSection>
@@ -1168,46 +1178,98 @@ function NumInput({
   max?: number
   disabled?: boolean
 }) {
+  // Teks lokal supaya user bebas mengetik; hanya nilai valid (angka dalam
+  // rentang schema) yang di-commit ke dokumen — mencegah autosave 422.
+  const [text, setText] = useState(String(value))
+
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+
+  function commit(raw: string) {
+    let v = Number(raw)
+    if (raw.trim() === '' || Number.isNaN(v)) {
+      setText(String(value))
+      return
+    }
+    if (min !== undefined) v = Math.max(min, v)
+    if (max !== undefined) v = Math.min(max, v)
+    setText(String(v))
+    if (v !== value) onChange(v)
+  }
+
   return (
     <label className="flex flex-col gap-0.5">
       <span className="text-text-muted text-[10px]">{label}</span>
       <input
         type="number"
-        value={value}
+        value={text}
         step={step}
         min={min}
         max={max}
         disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const raw = e.target.value
+          setText(raw)
+          const v = Number(raw)
+          if (
+            raw.trim() !== '' &&
+            !Number.isNaN(v) &&
+            (min === undefined || v >= min) &&
+            (max === undefined || v <= max)
+          ) {
+            onChange(v)
+          }
+        }}
+        onBlur={() => commit(text)}
         className="border-border-strong bg-background text-text-primary focus:border-primary focus:ring-primary w-full rounded-sm border px-2 py-1 text-right text-xs tabular-nums outline-none focus:ring-1 disabled:opacity-50"
       />
     </label>
   )
 }
 
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/
+
 function ColorInput({
   label,
   value,
   onChange,
+  allowEmpty = false,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
+  /** Kosong dianggap sah (mis. menghapus garis tepi). */
+  allowEmpty?: boolean
 }) {
+  // Hanya hex valid yang di-commit — nilai setengah jadi ("#ff") tinggal lokal
+  const [text, setText] = useState(value)
+
+  useEffect(() => {
+    setText(value)
+  }, [value])
+
   return (
     <label className="mt-2 flex items-center justify-between">
       <span className="text-text-secondary text-xs">{label}</span>
       <div className="flex items-center gap-1.5">
         <input
           type="color"
-          value={value || '#000000'}
+          value={HEX_COLOR.test(value) ? value.slice(0, 7) : '#000000'}
           onChange={(e) => onChange(e.target.value)}
           className="border-border-strong h-6 w-8 cursor-pointer rounded-sm border p-0"
         />
         <input
           type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={text}
+          onChange={(e) => {
+            const raw = e.target.value
+            setText(raw)
+            if (HEX_COLOR.test(raw) || (allowEmpty && raw === '')) onChange(raw)
+          }}
+          onBlur={() => {
+            if (!HEX_COLOR.test(text) && !(allowEmpty && text === '')) setText(value)
+          }}
           maxLength={9}
           className="border-border-strong bg-background text-text-primary focus:border-primary w-20 rounded-sm border px-1.5 py-0.5 text-xs outline-none"
         />

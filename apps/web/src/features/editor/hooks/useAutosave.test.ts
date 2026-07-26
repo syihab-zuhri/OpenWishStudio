@@ -29,6 +29,11 @@ function networkError() {
   return Promise.reject(new TypeError('Failed to fetch'))
 }
 
+/** Kuras antrean microtask beberapa kali (fetch berantai butuh > 2 flush). */
+async function flushAsync(times = 8) {
+  for (let i = 0; i < times; i++) await Promise.resolve()
+}
+
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -92,16 +97,16 @@ describe('useAutosave', () => {
     expect(useEditorStore.getState().saveStatus).toBe('saved')
   })
 
-  it('sets saveStatus to "error" on 409 response', async () => {
+  it('sets saveStatus to "error" when 409 persists and resync also fails', async () => {
     mockFetch.mockImplementation(() => response(409))
     useEditorStore.getState().setSaveStatus('unsaved')
     renderHook(() => useAutosave())
     await act(async () => {
       vi.advanceTimersByTime(1500)
-      await Promise.resolve()
-      await Promise.resolve()
+      await flushAsync()
     })
     expect(useEditorStore.getState().saveStatus).toBe('error')
+    expect(useEditorStore.getState().lastSaveError).toContain('sesi lain')
   })
 
   it('sets saveStatus to "offline" on network TypeError', async () => {
@@ -164,11 +169,11 @@ describe('useAutosave', () => {
     renderHook(() => useAutosave())
     await act(async () => {
       useEditorStore.getState().requestSaveNow()
-      await Promise.resolve()
-      await Promise.resolve()
+      await flushAsync()
     })
     expect(useEditorStore.getState().manualSaveState).toBe('error')
     expect(useEditorStore.getState().saveStatus).toBe('error')
+    expect(useEditorStore.getState().lastSaveError).toBe('Gagal menyimpan (HTTP 500).')
   })
 
   it('re-saves edits made while a save is in flight', async () => {
@@ -232,18 +237,10 @@ describe('useAutosave', () => {
     })
     useEditorStore.getState().setSaveStatus('unsaved')
     renderHook(() => useAutosave())
+    // Retry pasca-resync berjalan langsung (tanpa debounce) di rantai yang sama
     await act(async () => {
       vi.advanceTimersByTime(1500)
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(useEditorStore.getState().draftRevision).toBe(7)
-    expect(useEditorStore.getState().saveStatus).toBe('unsaved')
-    await act(async () => {
-      vi.advanceTimersByTime(1500)
-      await Promise.resolve()
-      await Promise.resolve()
+      await flushAsync(12)
     })
     const patchCalls = mockFetch.mock.calls.filter(
       (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',

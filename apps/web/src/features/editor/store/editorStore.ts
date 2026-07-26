@@ -28,6 +28,8 @@ interface EditorState {
   saveRequestNonce: number
   /** Status permintaan simpan manual — dipakai toast feedback di topbar. */
   manualSaveState: 'idle' | 'saving' | 'success' | 'error'
+  /** Alasan kegagalan simpan terakhir (dari server) — null saat sukses. */
+  lastSaveError: string | null
 }
 
 interface EditorActions {
@@ -36,6 +38,7 @@ interface EditorActions {
   setDraftRevision: (revision: number) => void
   requestSaveNow: () => void
   setManualSaveState: (state: EditorState['manualSaveState']) => void
+  setLastSaveError: (message: string | null) => void
   selectScene: (sceneId: string) => void
   addScene: () => void
   deleteScene: (sceneId: string) => void
@@ -125,6 +128,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   isGuest: false,
   saveRequestNonce: 0,
   manualSaveState: 'idle',
+  lastSaveError: null,
 
   // ── Project ─────────────────────────────────────────────────────────────────
 
@@ -150,6 +154,10 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
 
   setManualSaveState(state) {
     set({ manualSaveState: state })
+  },
+
+  setLastSaveError(message) {
+    set({ lastSaveError: message })
   },
 
   // ── Scene selection ──────────────────────────────────────────────────────────
@@ -433,5 +441,6 @@ export function initEditorStore(
     isGuest: options?.isGuest ?? false,
     saveRequestNonce: 0,
     manualSaveState: 'idle',
+    lastSaveError: null,
   })
 }
