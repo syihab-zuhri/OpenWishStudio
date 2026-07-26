@@ -60,11 +60,15 @@ export function PublishDialog({ projectId, onClose }: Props) {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/v1/projects/${projectId}/publish-status`)
-      .then((r) => r.json())
-      .then((json) => {
-        setStatus(json.data)
+    fetch(`/api/v1/projects/${projectId}/publish-status`, {
+      signal: AbortSignal.timeout(30_000),
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error('publish-status failed')
+        // Respons API tidak dibungkus {data} — payload langsung di level atas
+        return (await r.json()) as PublishStatus
       })
+      .then((data) => setStatus(data))
       .catch(() => setLoadError(true))
   }, [projectId])
 
@@ -80,22 +84,28 @@ export function PublishDialog({ projectId, onClose }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
       })
-      const json = await res.json()
+      const json = (await res.json()) as PublishResult & { error?: string }
       if (!res.ok) {
         setActionError(json.error ?? 'Gagal mempublikasikan kreasi.')
       } else {
-        setResult(json.data as PublishResult)
+        setResult(json)
         setStatus((prev) => ({
           ...prev!,
           status: 'published',
-          url: json.data.url,
-          versionNo: json.data.versionNo,
-          expiresAt: json.data.expiresAt,
+          url: json.url,
+          versionNo: json.versionNo,
+          expiresAt: json.expiresAt,
         }))
       }
-    } catch {
-      setActionError('Terjadi kesalahan jaringan.')
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'TimeoutError'
+      setActionError(
+        timedOut
+          ? 'Server tidak merespons dalam 30 detik. Coba lagi sebentar lagi.'
+          : 'Terjadi kesalahan jaringan.',
+      )
     } finally {
       setPublishing(false)
     }
@@ -105,16 +115,24 @@ export function PublishDialog({ projectId, onClose }: Props) {
     setUnpublishing(true)
     setActionError(null)
     try {
-      const res = await fetch(`/api/v1/projects/${projectId}/unpublish`, { method: 'POST' })
-      const json = await res.json()
+      const res = await fetch(`/api/v1/projects/${projectId}/unpublish`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(30_000),
+      })
+      const json = (await res.json()) as { error?: string }
       if (!res.ok) {
         setActionError(json.error ?? 'Gagal menarik publikasi.')
       } else {
         setStatus((prev) => ({ ...prev!, status: 'unpublished', url: null }))
         setResult(null)
       }
-    } catch {
-      setActionError('Terjadi kesalahan jaringan.')
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'TimeoutError'
+      setActionError(
+        timedOut
+          ? 'Server tidak merespons dalam 30 detik. Coba lagi sebentar lagi.'
+          : 'Terjadi kesalahan jaringan.',
+      )
     } finally {
       setUnpublishing(false)
     }

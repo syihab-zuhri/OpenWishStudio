@@ -12,6 +12,7 @@ export function useAutosave() {
   const projectId = useEditorStore((s) => s.projectId)
   const document = useEditorStore((s) => s.document)
   const saveStatus = useEditorStore((s) => s.saveStatus)
+  const saveRequestNonce = useEditorStore((s) => s.saveRequestNonce)
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
   const setDraftRevision = useEditorStore((s) => s.setDraftRevision)
 
@@ -43,6 +44,17 @@ export function useAutosave() {
     // document is the trigger; projectId / setSaveStatus are stable refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document, saveStatus])
+
+  // Tombol Simpan manual: simpan segera tanpa menunggu debounce
+  useEffect(() => {
+    if (saveRequestNonce === 0) return
+    if (timerRef.current) clearTimeout(timerRef.current)
+    const state = useEditorStore.getState()
+    if (!state.projectId) return
+    if (state.isGuest) saveLocal(state.document)
+    else void save(state.document)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveRequestNonce])
 
   /** Mode tamu: simpan ke perangkat (localStorage), tanpa server. */
   function saveLocal(doc: ProjectDocument) {

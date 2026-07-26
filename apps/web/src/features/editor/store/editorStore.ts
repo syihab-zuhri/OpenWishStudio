@@ -24,12 +24,15 @@ interface EditorState {
   draftRevision: number
   /** Mode tamu: draft disimpan di perangkat, bukan ke server. */
   isGuest: boolean
+  /** Bertambah setiap tombol Simpan manual ditekan; dipantau useAutosave. */
+  saveRequestNonce: number
 }
 
 interface EditorActions {
   setProjectName: (name: string) => void
   setSaveStatus: (status: SaveStatus) => void
   setDraftRevision: (revision: number) => void
+  requestSaveNow: () => void
   selectScene: (sceneId: string) => void
   addScene: () => void
   deleteScene: (sceneId: string) => void
@@ -117,6 +120,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   future: [],
   draftRevision: 0,
   isGuest: false,
+  saveRequestNonce: 0,
 
   // ── Project ─────────────────────────────────────────────────────────────────
 
@@ -134,6 +138,10 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
 
   setDraftRevision(revision) {
     set({ draftRevision: revision })
+  },
+
+  requestSaveNow() {
+    set((s) => ({ saveRequestNonce: s.saveRequestNonce + 1 }))
   },
 
   // ── Scene selection ──────────────────────────────────────────────────────────
@@ -415,5 +423,6 @@ export function initEditorStore(
     future: [],
     draftRevision: options?.revision ?? 0,
     isGuest: options?.isGuest ?? false,
+    saveRequestNonce: 0,
   })
 }

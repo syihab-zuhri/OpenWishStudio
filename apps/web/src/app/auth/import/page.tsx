@@ -45,11 +45,11 @@ function ImportFlow() {
       }),
     })
       .then(async (res) => {
-        const json = await res.json()
-        if (res.ok) {
+        const json = (await res.json()) as { projectId?: string; error?: string }
+        // Respons API top-level: { projectId, imported } — bukan {data:{...}}
+        if (res.ok && json.projectId) {
           clearGuestDraft()
-          const projectId: string = json.data?.projectId
-          router.replace(`/editor/${projectId}` as never)
+          router.replace(`/editor/${json.projectId}` as never)
         } else {
           setErrorMsg(json.error ?? 'Impor gagal.')
           setPhase('failed')

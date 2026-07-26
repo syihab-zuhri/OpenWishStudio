@@ -50,6 +50,7 @@ function EditorLayout() {
   const projectId = useEditorStore((s) => s.projectId)
   const isGuest = useEditorStore((s) => s.isGuest)
   const saveStatus = useEditorStore((s) => s.saveStatus)
+  const requestSaveNow = useEditorStore((s) => s.requestSaveNow)
   const undo = useEditorStore((s) => s.undo)
   const redo = useEditorStore((s) => s.redo)
   const canUndo = useEditorStore((s) => s.past.length > 0)
@@ -161,6 +162,32 @@ function EditorLayout() {
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <SaveStatusBadge status={saveStatus} />
+          <button
+            type="button"
+            onClick={requestSaveNow}
+            disabled={saveStatus === 'saving'}
+            aria-label="Simpan sekarang"
+            className="border-border-strong text-text-secondary hover:bg-surface-hover hover:text-text-primary flex items-center gap-1.5 rounded-sm border px-2 py-1.5 text-xs font-medium uppercase tracking-[0.06em] transition-colors disabled:opacity-50 sm:px-3"
+          >
+            <svg
+              className="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-8H7v8" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 3v5h8" />
+            </svg>
+            <span className="hidden sm:inline">
+              {saveStatus === 'saving' ? 'Menyimpan…' : 'Simpan'}
+            </span>
+          </button>
           <a
             href={isGuest ? '/editor/guest/preview' : `/editor/${projectId}/preview`}
             target="_blank"

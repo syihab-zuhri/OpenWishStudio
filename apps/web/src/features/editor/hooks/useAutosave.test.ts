@@ -145,6 +145,19 @@ describe('useAutosave', () => {
     expect(useEditorStore.getState().saveStatus).toBe('saved')
   })
 
+  it('saves immediately when requestSaveNow is called (tombol Simpan)', async () => {
+    mockFetch.mockImplementation(() => ok200(2))
+    renderHook(() => useAutosave())
+    await act(async () => {
+      useEditorStore.getState().requestSaveNow()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // Tanpa advanceTimersByTime — simpan langsung, bukan lewat debounce
+    expect(mockFetch).toHaveBeenCalledOnce()
+    expect(useEditorStore.getState().saveStatus).toBe('saved')
+  })
+
   it('re-saves edits made while a save is in flight', async () => {
     let resolveFirst!: () => void
     let call = 0
