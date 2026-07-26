@@ -29,8 +29,13 @@ function LoginForm() {
 
   const guestSuffix = guestDraftPending ? '&guestImport=1' : ''
 
+  // Email OTP lands on /auth/confirm (verifies token_hash)
   const confirmUrl =
     `${process.env.NEXT_PUBLIC_APP_URL}/auth/confirm?next=${encodeURIComponent(nextPath)}${guestSuffix}`
+
+  // OAuth lands on /auth/callback (exchanges code for session)
+  const callbackUrl =
+    `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=${encodeURIComponent(nextPath)}${guestSuffix}`
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -59,7 +64,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: confirmUrl,
+        redirectTo: callbackUrl,
         scopes: provider === 'google' ? 'email profile' : 'user:email',
       },
     })

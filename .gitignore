@@ -28,6 +28,10 @@ supabase/.temp/
 # Local AI/editor settings
 .claude/settings.local.json
 .idea/
+
+# Google OAuth client secret files
+client_secret_*.json
+
 .vscode/
 
 # Logs
