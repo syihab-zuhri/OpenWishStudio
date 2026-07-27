@@ -955,13 +955,10 @@ function ElementPropsInspector({
     const p = element.props
     return (
       <InspectorSection title="Gambar">
-        <label className="text-text-secondary block text-xs">URL gambar</label>
-        <input
-          type="url"
+        <UrlInput
+          label="URL gambar"
           value={p.src ?? ''}
-          onChange={(e) => onUpdateProps({ src: e.target.value })}
-          placeholder="https://…"
-          className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
+          onCommit={(v) => onUpdateProps({ src: v })}
         />
         <label className="text-text-secondary mt-2 block text-xs">Alt text</label>
         <input
@@ -1022,13 +1019,11 @@ function ElementPropsInspector({
           onChange={(e) => onUpdateProps({ label: e.target.value })}
           className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
         />
-        <label className="text-text-secondary mt-2 block text-xs">URL tujuan</label>
-        <input
-          type="url"
-          value={p.url}
-          onChange={(e) => onUpdateProps({ url: e.target.value })}
-          placeholder="https://…"
-          className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
+        <UrlInput
+          className="mt-2"
+          label="URL tujuan"
+          value={p.url ?? ''}
+          onCommit={(v) => onUpdateProps({ url: v })}
         />
         <div className="mt-2 grid grid-cols-2 gap-2">
           <ColorInput
@@ -1127,16 +1122,12 @@ function SceneInspector({
           </>
         )}
         {bg.type === 'image' && (
-          <>
-            <label className="text-text-secondary mt-2 block text-xs">URL gambar</label>
-            <input
-              type="url"
-              value={bg.src ?? ''}
-              onChange={(e) => onUpdateBackground({ ...bg, src: e.target.value })}
-              placeholder="https://…"
-              className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
-            />
-          </>
+          <UrlInput
+            className="mt-2"
+            label="URL gambar"
+            value={bg.src ?? ''}
+            onCommit={(v) => onUpdateBackground({ ...bg, src: v })}
+          />
         )}
       </InspectorSection>
 
@@ -1225,6 +1216,57 @@ function NumInput({
         className="border-border-strong bg-background text-text-primary focus:border-primary focus:ring-primary w-full rounded-sm border px-2 py-1 text-right text-xs tabular-nums outline-none focus:ring-1 disabled:opacity-50"
       />
     </label>
+  )
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+/** Input URL: hanya http(s) valid (atau kosong) yang di-commit — mencegah 422. */
+function UrlInput({
+  label,
+  value,
+  onCommit,
+  className = '',
+}: {
+  label: string
+  value: string
+  onCommit: (v: string | undefined) => void
+  className?: string
+}) {
+  const [text, setText] = useState(value)
+
+  useEffect(() => {
+    setText(value)
+  }, [value])
+
+  const valid = text === '' || isValidHttpUrl(text)
+
+  return (
+    <div className={className}>
+      <label className="text-text-secondary block text-xs">{label}</label>
+      <input
+        type="url"
+        value={text}
+        onChange={(e) => {
+          const raw = e.target.value
+          setText(raw)
+          if (raw === '') onCommit(undefined)
+          else if (isValidHttpUrl(raw)) onCommit(raw)
+        }}
+        placeholder="https://…"
+        className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
+      />
+      {!valid && (
+        <p className="text-warning mt-1 text-[10px]">URL harus diawali http:// atau https://</p>
+      )}
+    </div>
   )
 }
 
@@ -1429,7 +1471,6 @@ function makeDefaultElement(type: ElementNode['type']): ElementNode {
         height: 48,
         props: {
           label: 'Klik di sini',
-          url: '#',
           variant: 'primary' as const,
           backgroundColor: '#6D5EF7',
           textColor: '#FFFFFF',

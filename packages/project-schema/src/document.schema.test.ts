@@ -89,7 +89,13 @@ describe('ElementNodeSchema', () => {
     const el = {
       id: uuidv4(),
       type: 'image' as const,
-      x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, locked: false,
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      rotation: 0,
+      zIndex: 0,
+      locked: false,
       props: { alt: '', objectFit: 'cover' as const, decorative: false },
     }
     expect(() => ElementNodeSchema.parse(el)).not.toThrow()
@@ -99,7 +105,13 @@ describe('ElementNodeSchema', () => {
     const el = {
       id: uuidv4(),
       type: 'shape' as const,
-      x: 0, y: 0, width: 50, height: 50, rotation: 0, zIndex: 0, locked: false,
+      x: 0,
+      y: 0,
+      width: 50,
+      height: 50,
+      rotation: 0,
+      zIndex: 0,
+      locked: false,
       props: { shape: 'circle' as const },
     }
     expect(() => ElementNodeSchema.parse(el)).not.toThrow()
@@ -109,7 +121,13 @@ describe('ElementNodeSchema', () => {
     const el = {
       id: uuidv4(),
       type: 'icon' as const,
-      x: 0, y: 0, width: 32, height: 32, rotation: 0, zIndex: 0, locked: false,
+      x: 0,
+      y: 0,
+      width: 32,
+      height: 32,
+      rotation: 0,
+      zIndex: 0,
+      locked: false,
       props: { iconName: 'heart' },
     }
     expect(() => ElementNodeSchema.parse(el)).not.toThrow()
@@ -119,8 +137,30 @@ describe('ElementNodeSchema', () => {
     const el = {
       id: uuidv4(),
       type: 'button' as const,
-      x: 0, y: 0, width: 120, height: 40, rotation: 0, zIndex: 0, locked: false,
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 40,
+      rotation: 0,
+      zIndex: 0,
+      locked: false,
       props: { label: 'Click me', url: 'https://example.com', variant: 'primary' as const },
+    }
+    expect(() => ElementNodeSchema.parse(el)).not.toThrow()
+  })
+
+  it('accepts a button without url (tombol baru belum punya tujuan)', () => {
+    const el = {
+      id: uuidv4(),
+      type: 'button' as const,
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 40,
+      rotation: 0,
+      zIndex: 0,
+      locked: false,
+      props: { label: 'Klik di sini', variant: 'primary' as const },
     }
     expect(() => ElementNodeSchema.parse(el)).not.toThrow()
   })
@@ -129,7 +169,13 @@ describe('ElementNodeSchema', () => {
     const el = {
       id: uuidv4(),
       type: 'audioControl' as const,
-      x: 0, y: 0, width: 48, height: 48, rotation: 0, zIndex: 0, locked: false,
+      x: 0,
+      y: 0,
+      width: 48,
+      height: 48,
+      rotation: 0,
+      zIndex: 0,
+      locked: false,
       props: { compact: false },
     }
     expect(() => ElementNodeSchema.parse(el)).not.toThrow()
@@ -142,7 +188,9 @@ describe('ElementNodeSchema', () => {
   })
 
   it('text element with content exceeding 5000 chars throws ZodError', () => {
-    const el = makeTextElement({ props: { content: 'x'.repeat(5001), fontSize: 16, color: '#000000' } })
+    const el = makeTextElement({
+      props: { content: 'x'.repeat(5001), fontSize: 16, color: '#000000' },
+    })
     const result = ElementNodeSchema.safeParse(el)
     expect(result.success).toBe(false)
   })

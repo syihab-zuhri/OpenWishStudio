@@ -72,7 +72,8 @@ export const IconElementPropsSchema = z.object({
 
 export const ButtonElementPropsSchema = z.object({
   label: z.string().max(200),
-  url: SafeUrlSchema,
+  // Opsional: tombol baru belum punya tujuan; renderer aman terhadap undefined
+  url: SafeUrlSchema.optional(),
   variant: z.enum(['primary', 'secondary', 'ghost']).default('primary'),
   backgroundColor: z
     .string()
