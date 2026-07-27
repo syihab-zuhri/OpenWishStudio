@@ -60,9 +60,11 @@ export async function DELETE(_request: NextRequest, { params }: { params: Params
   const { data: existing } = await fetchOwnedProject(supabase, user!.id, id)
   if (!existing) return notFound()
 
-  // Soft delete lewat service client: WITH CHECK kebijakan update di database
-  // menolak baris yang deleted_at-nya terisi, sehingga update via klien user
-  // selalu gagal RLS. Kepemilikan sudah diverifikasi fetchOwnedProject di atas.
+  // Soft delete lewat service client, bukan klien user: kebijakan SELECT
+  // (deleted_at IS NULL) ditegakkan Postgres terhadap baris HASIL update,
+  // sehingga baris yang baru di-soft-delete "tak terlihat" dan update-nya
+  // ditolak RLS (diverifikasi empiris via impersonasi SQL — bahkan tanpa
+  // RETURNING). Kepemilikan sudah diverifikasi fetchOwnedProject di atas.
   const serviceClient = await createSupabaseServiceClient()
 
   // Matikan halaman publik lebih dulu — tanpa ini, tautan yang sudah dibagikan
