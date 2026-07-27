@@ -274,8 +274,41 @@ describe('migration helpers', () => {
     expect(isCurrentVersion({ schemaVersion: 0 })).toBe(false)
   })
 
-  it('isMigratable returns true for version 1 (current)', () => {
+  it('isMigratable returns true for version 1 (legacy)', () => {
     expect(isMigratable({ schemaVersion: 1 })).toBe(true)
+  })
+
+  it('migrates v1 documents with theme and common element defaults', () => {
+    const current = createDefaultDocument('Legacy')
+    const legacy = {
+      ...current,
+      schemaVersion: 1,
+      project: { title: 'Legacy', locale: 'id-ID' },
+      scenes: [
+        {
+          ...current.scenes[0],
+          elements: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              type: 'text',
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 40,
+              rotation: 0,
+              zIndex: 0,
+              locked: false,
+              props: { content: 'Legacy', fontSize: 16, color: '#17171C' },
+            },
+          ],
+        },
+      ],
+    }
+
+    const migrated = migrateDocument(legacy as Record<string, unknown>)
+    expect(migrated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    expect(migrated.project.theme?.primary).toBe('#6D5EF7')
+    expect(migrated.scenes[0].elements[0]).toMatchObject({ visible: true, opacity: 1 })
   })
 
   it('isMigratable returns false for version 0', () => {

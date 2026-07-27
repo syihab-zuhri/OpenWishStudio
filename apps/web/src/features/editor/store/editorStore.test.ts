@@ -354,3 +354,79 @@ describe('reorderElements', () => {
     expect(getState().document.scenes[0].elements.find((el) => el.id === second.id)?.zIndex).toBe(1)
   })
 })
+
+describe('editor 2.0 selection tools', () => {
+  it('supports additive selection and duplicate', () => {
+    const sceneId = getState().document.scenes[0].id
+    const first = makeTextElement()
+    const second = makeTextElement({ x: 240, zIndex: 1 })
+    getState().addElement(sceneId, first)
+    getState().addElement(sceneId, second)
+
+    getState().selectElement(first.id)
+    getState().selectElement(second.id, true)
+    expect(getState().selectedElementIds).toEqual([first.id, second.id])
+
+    getState().duplicateSelectedElements()
+    expect(getState().document.scenes[0].elements).toHaveLength(4)
+    expect(getState().selectedElementIds).toHaveLength(2)
+  })
+
+  it('aligns multiple selected elements and can undo the operation', () => {
+    const sceneId = getState().document.scenes[0].id
+    const first = makeTextElement({ x: 20 })
+    const second = makeTextElement({ x: 240, zIndex: 1 })
+    getState().addElement(sceneId, first)
+    getState().addElement(sceneId, second)
+    getState().selectElements([first.id, second.id])
+
+    getState().alignSelectedElements('left')
+    const aligned = getState().document.scenes[0].elements
+    expect(aligned.find((element) => element.id === first.id)?.x).toBe(20)
+    expect(aligned.find((element) => element.id === second.id)?.x).toBe(20)
+
+    getState().undo()
+    expect(
+      getState().document.scenes[0].elements.find((element) => element.id === second.id)?.x,
+    ).toBe(240)
+  })
+
+  it('groups and ungroups selected elements', () => {
+    const sceneId = getState().document.scenes[0].id
+    const first = makeTextElement()
+    const second = makeTextElement({ zIndex: 1 })
+    getState().addElement(sceneId, first)
+    getState().addElement(sceneId, second)
+    getState().selectElements([first.id, second.id])
+
+    getState().groupSelectedElements()
+    const grouped = getState().document.scenes[0].elements
+    const groupId = grouped.find((element) => element.id === first.id)?.groupId
+    expect(groupId).toBeTruthy()
+    expect(grouped.find((element) => element.id === second.id)?.groupId).toBe(groupId)
+
+    getState().ungroupSelectedElements()
+    expect(getState().document.scenes[0].elements.every((element) => !element.groupId)).toBe(true)
+  })
+
+  it('coalesces repeated property changes into one history frame', () => {
+    const sceneId = getState().document.scenes[0].id
+    const element = makeTextElement()
+    getState().addElement(sceneId, element)
+    const before = getState().past.length
+
+    getState().updateElementProps(sceneId, element.id, { fontSize: 20 })
+    getState().updateElementProps(sceneId, element.id, { fontSize: 24 })
+
+    expect(getState().past.length).toBe(before + 1)
+    getState().undo()
+    expect(
+      (
+        getState().document.scenes[0].elements.find((item) => item.id === element.id) as Extract<
+          ElementNode,
+          { type: 'text' }
+        >
+      ).props.fontSize,
+    ).toBe(16)
+  })
+})

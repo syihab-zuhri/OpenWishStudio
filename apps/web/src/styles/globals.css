@@ -87,3 +87,77 @@
 @utility bg-spotlight {
   background-image: radial-gradient(70% 55% at 50% 38%, rgb(30 106 128 / 0.35), transparent 70%);
 }
+@keyframes ow-element-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ow-element-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ow-element-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ow-element-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ow-element-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+[data-animation='fade'] {
+  animation-name: ow-element-fade;
+}
+[data-animation='rise'] {
+  animation-name: ow-element-rise;
+}
+[data-animation='slide-left'] {
+  animation-name: ow-element-slide-left;
+}
+[data-animation='slide-right'] {
+  animation-name: ow-element-slide-right;
+}
+[data-animation='scale'] {
+  animation-name: ow-element-scale;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-animation] {
+    animation: none !important;
+  }
+}

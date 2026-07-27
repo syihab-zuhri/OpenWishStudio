@@ -1,7 +1,7 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { ProjectDocumentSchema } from '@openwish/project-schema'
+import { safeMigrateDocument } from '@openwish/project-schema'
 import { DraftPreview } from './_components/DraftPreview'
 
 interface Props {
@@ -43,7 +43,7 @@ export default async function PreviewPage({ params }: Props) {
     notFound()
   }
 
-  const document = ProjectDocumentSchema.safeParse(project.draft_document)
+  const document = safeMigrateDocument(project.draft_document)
   if (!document.success) notFound()
 
   return <DraftPreview projectId={project.id} projectName={project.name} document={document.data} />

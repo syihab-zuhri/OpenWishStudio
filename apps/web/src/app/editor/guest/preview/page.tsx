@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { Route } from 'next'
-import { ProjectDocumentSchema, type ProjectDocument } from '@openwish/project-schema'
+import { safeMigrateDocument, type ProjectDocument } from '@openwish/project-schema'
 import { loadGuestDraft } from '@/lib/guest-draft'
 import { DraftPreview } from '../../[id]/preview/_components/DraftPreview'
 
@@ -22,7 +22,7 @@ export default function GuestPreviewPage() {
       setState({ phase: 'empty' })
       return
     }
-    const parsed = ProjectDocumentSchema.safeParse(draft.document)
+    const parsed = safeMigrateDocument(draft.document)
     if (!parsed.success) {
       setState({ phase: 'empty' })
       return

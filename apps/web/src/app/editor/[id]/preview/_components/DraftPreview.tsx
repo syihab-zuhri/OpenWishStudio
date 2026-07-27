@@ -106,6 +106,7 @@ export function DraftPreview({ projectId, projectName, document, backHref }: Pro
       <main className="flex w-full flex-1 flex-col items-center">
         <SceneStack
           scenes={document.scenes}
+          theme={document.project.theme}
           audioEnabled={audioEnabled}
           onAudioToggle={soundtrack?.src ? handleToggleAudio : undefined}
         />

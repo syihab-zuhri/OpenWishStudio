@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { Scene } from '@openwish/project-schema'
+import type { Scene, Theme } from '@openwish/project-schema'
 import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 
 const BASE_WIDTH = 390
@@ -9,6 +9,7 @@ const VIEWER_MAX_WIDTH = 480
 
 interface Props {
   scenes: Scene[]
+  theme?: Theme
   audioEnabled: boolean
   onAudioToggle?: () => void
 }
@@ -18,7 +19,7 @@ interface Props {
  * lebar container yang terukur (bukan konstanta) supaya scene tidak overflow
  * pada layar yang lebih sempit dari 480px.
  */
-export function SceneStack({ scenes, audioEnabled, onAudioToggle }: Props) {
+export function SceneStack({ scenes, theme, audioEnabled, onAudioToggle }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState<number | null>(null)
 
@@ -52,6 +53,7 @@ export function SceneStack({ scenes, audioEnabled, onAudioToggle }: Props) {
           {width !== null && (
             <SceneRenderer
               scene={scene}
+              theme={theme}
               scale={scale}
               interactive={false}
               audioEnabled={audioEnabled}

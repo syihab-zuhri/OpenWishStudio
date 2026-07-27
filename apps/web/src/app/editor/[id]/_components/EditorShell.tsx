@@ -1,7 +1,13 @@
 'use client'
 
 import { useEffect, useCallback, useRef, useState } from 'react'
-import type { ProjectDocument, ElementNode, Scene } from '@openwish/project-schema'
+import {
+  DEFAULT_THEME,
+  type ProjectDocument,
+  type ElementNode,
+  type Scene,
+  type Theme,
+} from '@openwish/project-schema'
 import {
   initEditorStore,
   useEditorStore,
@@ -73,16 +79,63 @@ function EditorLayout() {
   // Keyboard shortcuts
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      if (
+        target?.isContentEditable ||
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT'
+      ) {
+        return
+      }
+
+      const state = useEditorStore.getState()
       const mac = navigator.platform.startsWith('Mac')
       const ctrl = mac ? e.metaKey : e.ctrlKey
-      if (!ctrl) return
-      if (e.key === 'z' && !e.shiftKey) {
+      const key = e.key.toLowerCase()
+      if (ctrl && key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        undo()
+        state.undo()
       }
-      if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+      if (ctrl && ((key === 'z' && e.shiftKey) || key === 'y')) {
         e.preventDefault()
-        redo()
+        state.redo()
+      }
+      if (ctrl && key === 'c') state.copySelectedElements()
+      if (ctrl && key === 'v') {
+        e.preventDefault()
+        state.pasteElements()
+      }
+      if (ctrl && key === 'd') {
+        e.preventDefault()
+        state.duplicateSelectedElements()
+      }
+      if (ctrl && key === 'g') {
+        e.preventDefault()
+        if (e.shiftKey) state.ungroupSelectedElements()
+        else state.groupSelectedElements()
+      }
+      if (key === 'delete' || key === 'backspace') {
+        e.preventDefault()
+        state.deleteSelectedElements()
+      }
+      if (key === 'escape') state.selectElements([])
+      const step = e.shiftKey ? 10 : 1
+      if (key === 'arrowleft') {
+        e.preventDefault()
+        state.nudgeSelectedElements(-step, 0)
+      }
+      if (key === 'arrowright') {
+        e.preventDefault()
+        state.nudgeSelectedElements(step, 0)
+      }
+      if (key === 'arrowup') {
+        e.preventDefault()
+        state.nudgeSelectedElements(0, -step)
+      }
+      if (key === 'arrowdown') {
+        e.preventDefault()
+        state.nudgeSelectedElements(0, step)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -261,7 +314,13 @@ function EditorLayout() {
         </div>
       </header>
 
-      {showPublish && <PublishDialog projectId={projectId} onClose={() => setShowPublish(false)} />}
+      {showPublish && (
+        <PublishDialog
+          projectId={projectId}
+          document={useEditorStore.getState().document}
+          onClose={() => setShowPublish(false)}
+        />
+      )}
 
       {/* Toast hasil simpan manual */}
       {manualSaveState === 'success' && (
@@ -585,12 +644,25 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
   const zoom = useEditorStore((s) => s.zoom)
   const setZoom = useEditorStore((s) => s.setZoom)
   const selectedElementId = useEditorStore((s) => s.selectedElementId)
+  const selectedElementIds = useEditorStore((s) => s.selectedElementIds)
   const selectElement = useEditorStore((s) => s.selectElement)
+  const selectElements = useEditorStore((s) => s.selectElements)
   const selectedSceneId = useEditorStore((s) => s.selectedSceneId)
   const updateElement = useEditorStore((s) => s.updateElement)
+  const updateElementProps = useEditorStore((s) => s.updateElementProps)
   const commitElementDrag = useEditorStore((s) => s.commitElementDrag)
+  const theme = useEditorStore((s) => s.document.project.theme)
 
   const [activeGuides, setActiveGuides] = useState<{ v: number[]; h: number[] } | null>(null)
+  const [editingElementId, setEditingElementId] = useState<string | null>(null)
+  const [marquee, setMarquee] = useState<{
+    startX: number
+    startY: number
+    currentX: number
+    currentY: number
+  } | null>(null)
+  const sceneFrameRef = useRef<HTMLDivElement>(null)
+  const justMarqueedRef = useRef(false)
 
   // Snap hanya untuk drag pindah (patch tanpa width/height); resize dibiarkan bebas
   const applySnap = useCallback(
@@ -664,17 +736,68 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
 
   const zoomPct = Math.round(zoom * 100)
 
+  function pointerInScene(event: React.PointerEvent) {
+    const rect = sceneFrameRef.current?.getBoundingClientRect()
+    if (!rect || !scene) return null
+    return {
+      x: Math.max(0, Math.min(scene.baseWidth, (event.clientX - rect.left) / zoom)),
+      y: Math.max(0, Math.min(scene.baseHeight, (event.clientY - rect.top) / zoom)),
+    }
+  }
+
+  function finishMarquee() {
+    if (!marquee || !scene) return
+    const left = Math.min(marquee.startX, marquee.currentX)
+    const top = Math.min(marquee.startY, marquee.currentY)
+    const right = Math.max(marquee.startX, marquee.currentX)
+    const bottom = Math.max(marquee.startY, marquee.currentY)
+    const moved = right - left > 3 || bottom - top > 3
+    if (moved) {
+      selectElements(
+        scene.elements
+          .filter(
+            (element) =>
+              element.visible !== false &&
+              element.x < right &&
+              element.x + element.width > left &&
+              element.y < bottom &&
+              element.y + element.height > top,
+          )
+          .map((element) => element.id),
+      )
+      justMarqueedRef.current = true
+    }
+    setMarquee(null)
+  }
+
   return (
     <main className="bg-canvas bg-spotlight relative min-w-0 flex-1 overflow-hidden">
       <div
         ref={scrollRef}
         className="absolute inset-0 overflow-auto overscroll-contain"
         onClick={() => {
-          if (!isDragging()) selectElement(null)
+          if (justMarqueedRef.current) {
+            justMarqueedRef.current = false
+            return
+          }
+          if (!isDragging()) {
+            selectElements([])
+            setEditingElementId(null)
+          }
         }}
-        onPointerMove={(e) => onPointerMove(e, liveUpdate)}
+        onPointerMove={(e) => {
+          onPointerMove(e, liveUpdate)
+          if (marquee) {
+            const point = pointerInScene(e)
+            if (point)
+              setMarquee((current) =>
+                current ? { ...current, currentX: point.x, currentY: point.y } : null,
+              )
+          }
+        }}
         onPointerUp={(e) => {
           onPointerUp(e, liveUpdate)
+          finishMarquee()
           setActiveGuides(null)
         }}
       >
@@ -683,20 +806,53 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
           <div className="m-auto shrink-0 p-4 sm:p-8">
             {scene ? (
               <div
+                ref={sceneFrameRef}
                 className="relative rounded-sm shadow-lg"
                 style={{
                   width: scene.baseWidth * zoom,
                   height: scene.baseHeight * zoom,
+                }}
+                onPointerDown={(event) => {
+                  const target = event.target as HTMLElement
+                  if (target.closest('[data-editor-element]')) return
+                  const point = pointerInScene(event)
+                  if (!point) return
+                  setMarquee({
+                    startX: point.x,
+                    startY: point.y,
+                    currentX: point.x,
+                    currentY: point.y,
+                  })
                 }}
               >
                 <SceneRenderer
                   scene={scene}
                   scale={zoom}
                   selectedElementId={selectedElementId}
+                  selectedElementIds={selectedElementIds}
+                  editingElementId={editingElementId}
+                  theme={theme}
                   interactive
-                  onElementClick={(id) => {
-                    selectElement(id)
+                  onElementClick={(id, event) => {
+                    const clicked = scene.elements.find((element) => element.id === id)
+                    if (clicked?.groupId && !event.shiftKey) {
+                      selectElements(
+                        scene.elements
+                          .filter((element) => element.groupId === clicked.groupId)
+                          .map((element) => element.id),
+                      )
+                    } else {
+                      selectElement(id, event.shiftKey)
+                    }
                     onElementSelect()
+                  }}
+                  onElementDoubleClick={(id) => {
+                    const clicked = scene.elements.find((element) => element.id === id)
+                    if (clicked?.type === 'text') setEditingElementId(id)
+                  }}
+                  onTextCommit={(id, content) => {
+                    if (selectedSceneId) updateElementProps(selectedSceneId, id, { content })
+                    setEditingElementId(null)
                   }}
                   onElementPointerDown={(elementId, e) => {
                     const el = scene.elements.find((el) => el.id === elementId)
@@ -708,6 +864,7 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
                       startY: el.y,
                       startW: el.width,
                       startH: el.height,
+                      aspectLocked: el.aspectLocked,
                     })
                   }}
                   onHandlePointerDown={(elementId, handle, e) => {
@@ -720,9 +877,22 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
                       startY: el.y,
                       startW: el.width,
                       startH: el.height,
+                      aspectLocked: el.aspectLocked,
                     })
                   }}
                 />
+                {marquee && (
+                  <div
+                    className="border-primary bg-primary/10 pointer-events-none absolute z-[10000] border"
+                    style={{
+                      left: Math.min(marquee.startX, marquee.currentX) * zoom,
+                      top: Math.min(marquee.startY, marquee.currentY) * zoom,
+                      width: Math.abs(marquee.currentX - marquee.startX) * zoom,
+                      height: Math.abs(marquee.currentY - marquee.startY) * zoom,
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
                 {/* Garis panduan snap — di atas semua elemen scene */}
                 {activeGuides && (
                   <div
@@ -760,6 +930,7 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
       </div>
 
       {/* Zoom toolbar — di luar area scroll supaya selalu terlihat */}
+      <SelectionToolbar />
       <div className="bg-surface-2 absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-1 shadow-md">
         <button
           type="button"
@@ -797,11 +968,102 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
 
 // ─── Inspector panel ──────────────────────────────────────────────────────────
 
+function SelectionToolbar() {
+  const count = useEditorStore((s) => s.selectedElementIds.length)
+  const duplicate = useEditorStore((s) => s.duplicateSelectedElements)
+  const remove = useEditorStore((s) => s.deleteSelectedElements)
+  const align = useEditorStore((s) => s.alignSelectedElements)
+  const distribute = useEditorStore((s) => s.distributeSelectedElements)
+  const group = useEditorStore((s) => s.groupSelectedElements)
+  const ungroup = useEditorStore((s) => s.ungroupSelectedElements)
+
+  if (count === 0) return null
+
+  const tools: { label: string; short: string; action: () => void; disabled?: boolean }[] = [
+    { label: 'Rata kiri', short: 'L', action: () => align('left') },
+    { label: 'Rata tengah horizontal', short: 'HC', action: () => align('center') },
+    { label: 'Rata kanan', short: 'R', action: () => align('right') },
+    { label: 'Rata atas', short: 'T', action: () => align('top') },
+    { label: 'Rata tengah vertikal', short: 'VC', action: () => align('middle') },
+    { label: 'Rata bawah', short: 'B', action: () => align('bottom') },
+    {
+      label: 'Sebar horizontal',
+      short: 'DH',
+      action: () => distribute('horizontal'),
+      disabled: count < 3,
+    },
+    {
+      label: 'Sebar vertikal',
+      short: 'DV',
+      action: () => distribute('vertical'),
+      disabled: count < 3,
+    },
+  ]
+
+  return (
+    <div className="bg-surface-2 border-border absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-md border p-1 shadow-md">
+      <span className="text-text-muted whitespace-nowrap px-2 text-[10px] tabular-nums">
+        {count} dipilih
+      </span>
+      {tools.map((tool) => (
+        <button
+          key={tool.label}
+          type="button"
+          title={tool.label}
+          aria-label={tool.label}
+          disabled={tool.disabled}
+          onClick={tool.action}
+          className="border-border text-text-secondary hover:border-primary hover:text-primary min-w-7 rounded-sm border px-1.5 py-1 text-[9px] font-semibold disabled:opacity-30"
+        >
+          {tool.short}
+        </button>
+      ))}
+      <span className="bg-border h-5 w-px shrink-0" />
+      {count > 1 && (
+        <button
+          type="button"
+          onClick={group}
+          className="text-text-secondary hover:bg-surface-hover rounded-sm px-2 py-1 text-[10px]"
+        >
+          Grup
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={ungroup}
+        className="text-text-secondary hover:bg-surface-hover rounded-sm px-2 py-1 text-[10px]"
+      >
+        Lepas
+      </button>
+      <button
+        type="button"
+        onClick={duplicate}
+        className="text-text-secondary hover:bg-surface-hover rounded-sm px-2 py-1 text-[10px]"
+      >
+        Duplikat
+      </button>
+      <button
+        type="button"
+        onClick={remove}
+        className="text-error hover:bg-error-subtle rounded-sm px-2 py-1 text-[10px]"
+      >
+        Hapus
+      </button>
+    </div>
+  )
+}
+
 function InspectorPanel() {
   const title = useEditorStore((s) => {
     const scene = s.document.scenes.find((sc) => sc.id === s.selectedSceneId)
     const element = scene?.elements.find((el) => el.id === s.selectedElementId)
-    return element ? 'Elemen' : scene ? 'Scene' : 'Inspector'
+    return s.selectedElementIds.length > 1
+      ? `${s.selectedElementIds.length} Elemen`
+      : element
+        ? 'Elemen'
+        : scene
+          ? 'Scene'
+          : 'Inspector'
   })
 
   return (
@@ -820,17 +1082,24 @@ function InspectorPanel() {
 /** Isi inspector — dipakai aside desktop dan bottom sheet mobile. */
 function InspectorBody() {
   const selectedElementId = useEditorStore((s) => s.selectedElementId)
+  const selectedElementIds = useEditorStore((s) => s.selectedElementIds)
   const selectedSceneId = useEditorStore((s) => s.selectedSceneId)
   const scene = useEditorStore((s) => {
     const id = s.selectedSceneId
     return s.document.scenes.find((sc) => sc.id === id)
   })
   const element = scene?.elements.find((el) => el.id === selectedElementId)
-  const updateElement = useEditorStore((s) => s.updateElement)
+  const updateElement = useEditorStore((s) => s.updateElementWithHistory)
   const updateElementProps = useEditorStore((s) => s.updateElementProps)
   const deleteElement = useEditorStore((s) => s.deleteElement)
   const reorderElementZ = useEditorStore((s) => s.reorderElementZ)
   const updateSceneBackground = useEditorStore((s) => s.updateSceneBackground)
+  const theme = useEditorStore((s) => s.document.project.theme ?? DEFAULT_THEME)
+  const setTheme = useEditorStore((s) => s.setTheme)
+
+  if (scene && selectedElementIds.length > 1) {
+    return <MultiSelectionInspector count={selectedElementIds.length} />
+  }
 
   if (element && selectedSceneId) {
     return (
@@ -850,6 +1119,8 @@ function InspectorBody() {
     return (
       <SceneInspector
         scene={scene}
+        theme={theme}
+        onUpdateTheme={setTheme}
         onUpdateBackground={(bg) => updateSceneBackground(selectedSceneId, bg)}
       />
     )
@@ -866,6 +1137,94 @@ function InspectorBody() {
 
 // ─── Element inspector ────────────────────────────────────────────────────────
 
+function MultiSelectionInspector({ count }: { count: number }) {
+  const align = useEditorStore((s) => s.alignSelectedElements)
+  const distribute = useEditorStore((s) => s.distributeSelectedElements)
+  const group = useEditorStore((s) => s.groupSelectedElements)
+  const ungroup = useEditorStore((s) => s.ungroupSelectedElements)
+  const duplicate = useEditorStore((s) => s.duplicateSelectedElements)
+  const remove = useEditorStore((s) => s.deleteSelectedElements)
+
+  return (
+    <div className="divide-border divide-y">
+      <InspectorSection title="Pilihan">
+        <p className="text-text-secondary text-xs">{count} elemen dipilih.</p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={group}
+            className="border-border-strong text-text-secondary rounded-sm border py-1.5 text-xs"
+          >
+            Grup
+          </button>
+          <button
+            type="button"
+            onClick={ungroup}
+            className="border-border-strong text-text-secondary rounded-sm border py-1.5 text-xs"
+          >
+            Lepas grup
+          </button>
+          <button
+            type="button"
+            onClick={duplicate}
+            className="border-border-strong text-text-secondary rounded-sm border py-1.5 text-xs"
+          >
+            Duplikat
+          </button>
+          <button
+            type="button"
+            onClick={remove}
+            className="border-error/30 text-error rounded-sm border py-1.5 text-xs"
+          >
+            Hapus
+          </button>
+        </div>
+      </InspectorSection>
+      <InspectorSection title="Perataan">
+        <div className="grid grid-cols-3 gap-1.5">
+          {(
+            [
+              ['left', 'Kiri'],
+              ['center', 'Tengah H'],
+              ['right', 'Kanan'],
+              ['top', 'Atas'],
+              ['middle', 'Tengah V'],
+              ['bottom', 'Bawah'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => align(value)}
+              className="border-border-strong text-text-secondary hover:border-primary hover:text-primary rounded-sm border py-1.5 text-[10px]"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={count < 3}
+            onClick={() => distribute('horizontal')}
+            className="border-border-strong text-text-secondary rounded-sm border py-1.5 text-[10px] disabled:opacity-30"
+          >
+            Sebar horizontal
+          </button>
+          <button
+            type="button"
+            disabled={count < 3}
+            onClick={() => distribute('vertical')}
+            className="border-border-strong text-text-secondary rounded-sm border py-1.5 text-[10px] disabled:opacity-30"
+          >
+            Sebar vertikal
+          </button>
+        </div>
+      </InspectorSection>
+    </div>
+  )
+}
+
 function ElementInspector({
   element,
   onUpdate,
@@ -875,11 +1234,7 @@ function ElementInspector({
 }: {
   element: ElementNode
   sceneId: string
-  onUpdate: (
-    patch: Partial<
-      Pick<ElementNode, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'locked'>
-    >,
-  ) => void
+  onUpdate: (patch: Partial<ElementNode>) => void
   onUpdateProps: (props: Record<string, unknown>) => void
   onDelete: () => void
   onReorderZ: (dir: 'up' | 'down' | 'front' | 'back') => void
@@ -902,6 +1257,48 @@ function ElementInspector({
           </svg>
         </button>
       </div>
+
+      <InspectorSection title="Identitas & Tampilan">
+        <label className="text-text-secondary block text-xs">Nama layer</label>
+        <input
+          type="text"
+          value={element.layerName ?? ''}
+          onChange={(e) => onUpdate({ layerName: e.target.value || undefined })}
+          placeholder={elementLayerName(element)}
+          maxLength={120}
+          className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
+        />
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <CheckInput
+            label="Tampilkan"
+            checked={element.visible !== false}
+            onChange={(value) => onUpdate({ visible: value })}
+          />
+          <CheckInput
+            label="Kunci rasio"
+            checked={element.aspectLocked ?? false}
+            onChange={(value) => onUpdate({ aspectLocked: value })}
+          />
+          <CheckInput
+            label="Balik X"
+            checked={element.flipX ?? false}
+            onChange={(value) => onUpdate({ flipX: value })}
+          />
+          <CheckInput
+            label="Balik Y"
+            checked={element.flipY ?? false}
+            onChange={(value) => onUpdate({ flipY: value })}
+          />
+        </div>
+        <RangeInput
+          label="Opasitas"
+          value={element.opacity ?? 1}
+          onChange={(value) => onUpdate({ opacity: value })}
+          min={0}
+          max={1}
+          step={0.05}
+        />
+      </InspectorSection>
 
       {/* Position & size */}
       <InspectorSection title="Posisi & Ukuran">
@@ -938,6 +1335,98 @@ function ElementInspector({
             </label>
           </div>
         </div>
+      </InspectorSection>
+
+      <InspectorSection title="Efek">
+        <CheckInput
+          label="Bayangan"
+          checked={Boolean(element.shadow)}
+          onChange={(enabled) =>
+            onUpdate({
+              shadow: enabled ? { x: 0, y: 8, blur: 24, spread: 0, color: '#00000033' } : undefined,
+            })
+          }
+        />
+        {element.shadow && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <NumInput
+              label="X"
+              value={element.shadow.x}
+              min={-200}
+              max={200}
+              onChange={(x) => onUpdate({ shadow: { ...element.shadow!, x } })}
+            />
+            <NumInput
+              label="Y"
+              value={element.shadow.y}
+              min={-200}
+              max={200}
+              onChange={(y) => onUpdate({ shadow: { ...element.shadow!, y } })}
+            />
+            <NumInput
+              label="Blur"
+              value={element.shadow.blur}
+              min={0}
+              max={200}
+              onChange={(blur) => onUpdate({ shadow: { ...element.shadow!, blur } })}
+            />
+            <NumInput
+              label="Sebar"
+              value={element.shadow.spread}
+              min={-100}
+              max={100}
+              onChange={(spread) => onUpdate({ shadow: { ...element.shadow!, spread } })}
+            />
+          </div>
+        )}
+        {element.shadow && (
+          <ColorInput
+            label="Warna bayangan"
+            value={element.shadow.color}
+            onChange={(color) => onUpdate({ shadow: { ...element.shadow!, color } })}
+          />
+        )}
+        <label className="text-text-secondary mt-3 block text-xs">Animasi masuk</label>
+        <select
+          value={element.animation?.type ?? 'none'}
+          onChange={(e) =>
+            onUpdate({
+              animation: {
+                type: e.target.value as NonNullable<ElementNode['animation']>['type'],
+                duration: element.animation?.duration ?? 400,
+                delay: element.animation?.delay ?? 0,
+              },
+            })
+          }
+          className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
+        >
+          <option value="none">Tanpa animasi</option>
+          <option value="fade">Fade</option>
+          <option value="rise">Rise</option>
+          <option value="slide-left">Slide kiri</option>
+          <option value="slide-right">Slide kanan</option>
+          <option value="scale">Scale</option>
+        </select>
+        {element.animation && element.animation.type !== 'none' && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <NumInput
+              label="Durasi (ms)"
+              value={element.animation.duration}
+              min={100}
+              max={2000}
+              step={50}
+              onChange={(duration) => onUpdate({ animation: { ...element.animation!, duration } })}
+            />
+            <NumInput
+              label="Delay (ms)"
+              value={element.animation.delay}
+              min={0}
+              max={10000}
+              step={50}
+              onChange={(delay) => onUpdate({ animation: { ...element.animation!, delay } })}
+            />
+          </div>
+        )}
       </InspectorSection>
 
       {/* Z-order */}
@@ -982,6 +1471,18 @@ function ElementPropsInspector({
           />
         </InspectorSection>
         <InspectorSection title="Tipografi">
+          <label className="text-text-secondary block text-xs">Font</label>
+          <select
+            value={p.fontFamily ?? 'Inter, sans-serif'}
+            onChange={(e) => onUpdateProps({ fontFamily: e.target.value })}
+            className="border-border-strong bg-background text-text-primary focus:border-primary mb-2 mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
+          >
+            <option value="Inter, sans-serif">Inter</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="Times New Roman, serif">Times New Roman</option>
+            <option value="Courier New, monospace">Courier New</option>
+          </select>
           <div className="grid grid-cols-2 gap-2">
             <NumInput
               label="Ukuran"
@@ -1004,12 +1505,121 @@ function ElementPropsInspector({
               onChange={(v) => onUpdateProps({ lineHeight: v })}
               step={0.1}
             />
+            <NumInput
+              label="Jarak huruf"
+              value={p.letterSpacing ?? 0}
+              onChange={(v) => onUpdateProps({ letterSpacing: v })}
+              step={0.1}
+              min={-20}
+              max={100}
+            />
+            <NumInput
+              label="Padding"
+              value={p.padding ?? 0}
+              min={0}
+              max={200}
+              onChange={(v) => onUpdateProps({ padding: v })}
+            />
+            <NumInput
+              label="Sudut"
+              value={p.borderRadius ?? 0}
+              min={0}
+              max={200}
+              onChange={(v) => onUpdateProps({ borderRadius: v })}
+            />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <SelectInput
+              label="Rata teks"
+              value={p.textAlign ?? 'left'}
+              options={[
+                ['left', 'Kiri'],
+                ['center', 'Tengah'],
+                ['right', 'Kanan'],
+              ]}
+              onChange={(value) => onUpdateProps({ textAlign: value })}
+            />
+            <SelectInput
+              label="Rata vertikal"
+              value={p.verticalAlign ?? 'top'}
+              options={[
+                ['top', 'Atas'],
+                ['middle', 'Tengah'],
+                ['bottom', 'Bawah'],
+              ]}
+              onChange={(value) => onUpdateProps({ verticalAlign: value })}
+            />
+            <SelectInput
+              label="Gaya"
+              value={p.fontStyle ?? 'normal'}
+              options={[
+                ['normal', 'Normal'],
+                ['italic', 'Miring'],
+              ]}
+              onChange={(value) => onUpdateProps({ fontStyle: value })}
+            />
+            <SelectInput
+              label="Dekorasi"
+              value={p.textDecoration ?? 'none'}
+              options={[
+                ['none', 'Tidak ada'],
+                ['underline', 'Garis bawah'],
+                ['line-through', 'Coret'],
+              ]}
+              onChange={(value) => onUpdateProps({ textDecoration: value })}
+            />
           </div>
           <ColorInput
             label="Warna teks"
             value={p.color}
             onChange={(v) => onUpdateProps({ color: v })}
           />
+          <ColorInput
+            label="Warna latar"
+            value={p.backgroundColor ?? '#FFFFFF'}
+            onChange={(v) => onUpdateProps({ backgroundColor: v })}
+          />
+          <CheckInput
+            label="Bayangan teks"
+            checked={Boolean(p.textShadow)}
+            onChange={(enabled) =>
+              onUpdateProps({
+                textShadow: enabled ? { x: 0, y: 2, blur: 4, color: '#00000055' } : undefined,
+              })
+            }
+          />
+          {p.textShadow && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <NumInput
+                label="Shadow X"
+                value={p.textShadow.x}
+                min={-100}
+                max={100}
+                onChange={(x) => onUpdateProps({ textShadow: { ...p.textShadow!, x } })}
+              />
+              <NumInput
+                label="Shadow Y"
+                value={p.textShadow.y}
+                min={-100}
+                max={100}
+                onChange={(y) => onUpdateProps({ textShadow: { ...p.textShadow!, y } })}
+              />
+              <NumInput
+                label="Shadow blur"
+                value={p.textShadow.blur}
+                min={0}
+                max={100}
+                onChange={(blur) => onUpdateProps({ textShadow: { ...p.textShadow!, blur } })}
+              />
+            </div>
+          )}
+          {p.textShadow && (
+            <ColorInput
+              label="Warna shadow"
+              value={p.textShadow.color}
+              onChange={(color) => onUpdateProps({ textShadow: { ...p.textShadow!, color } })}
+            />
+          )}
         </InspectorSection>
       </>
     )
@@ -1031,6 +1641,91 @@ function ElementPropsInspector({
           onChange={(e) => onUpdateProps({ alt: e.target.value })}
           className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
         />
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <SelectInput
+            label="Mode isi"
+            value={p.objectFit}
+            options={[
+              ['cover', 'Crop'],
+              ['contain', 'Muat'],
+              ['fill', 'Regangkan'],
+            ]}
+            onChange={(value) => onUpdateProps({ objectFit: value })}
+          />
+          <NumInput
+            label="Sudut"
+            value={p.borderRadius ?? 0}
+            min={0}
+            max={200}
+            onChange={(v) => onUpdateProps({ borderRadius: v })}
+          />
+        </div>
+        <CheckInput
+          label="Gambar dekoratif"
+          checked={p.decorative}
+          onChange={(decorative) => onUpdateProps({ decorative })}
+        />
+        {p.objectFit === 'cover' && (
+          <div className="border-border mt-2 rounded-sm border p-2">
+            <p className="text-text-muted mb-1 text-[10px] font-medium uppercase tracking-[0.06em]">
+              Fokus crop
+            </p>
+            <RangeInput
+              label="Horizontal"
+              value={p.objectPositionX ?? 50}
+              min={0}
+              max={100}
+              step={1}
+              onChange={(objectPositionX) => onUpdateProps({ objectPositionX })}
+            />
+            <RangeInput
+              label="Vertikal"
+              value={p.objectPositionY ?? 50}
+              min={0}
+              max={100}
+              step={1}
+              onChange={(objectPositionY) => onUpdateProps({ objectPositionY })}
+            />
+          </div>
+        )}
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <NumInput
+            label="Tebal border"
+            value={p.borderWidth ?? 0}
+            min={0}
+            max={50}
+            onChange={(borderWidth) => onUpdateProps({ borderWidth })}
+          />
+          <NumInput
+            label="Terang"
+            value={p.brightness ?? 1}
+            min={0}
+            max={2}
+            step={0.05}
+            onChange={(brightness) => onUpdateProps({ brightness })}
+          />
+          <NumInput
+            label="Kontras"
+            value={p.contrast ?? 1}
+            min={0}
+            max={2}
+            step={0.05}
+            onChange={(contrast) => onUpdateProps({ contrast })}
+          />
+          <NumInput
+            label="Saturasi"
+            value={p.saturation ?? 1}
+            min={0}
+            max={2}
+            step={0.05}
+            onChange={(saturation) => onUpdateProps({ saturation })}
+          />
+        </div>
+        <ColorInput
+          label="Warna border"
+          value={p.borderColor ?? '#000000'}
+          onChange={(borderColor) => onUpdateProps({ borderColor })}
+        />
       </InspectorSection>
     )
   }
@@ -1039,6 +1734,18 @@ function ElementPropsInspector({
     const p = element.props
     return (
       <InspectorSection title="Bentuk">
+        <SelectInput
+          label="Jenis"
+          value={p.shape}
+          options={[
+            ['rectangle', 'Kotak'],
+            ['circle', 'Lingkaran'],
+            ['triangle', 'Segitiga'],
+            ['star', 'Bintang'],
+            ['heart', 'Hati'],
+          ]}
+          onChange={(shape) => onUpdateProps({ shape })}
+        />
         <ColorInput
           label="Isi"
           value={p.fill ?? '#000000'}
@@ -1072,6 +1779,73 @@ function ElementPropsInspector({
     )
   }
 
+  if (element.type === 'icon') {
+    const p = element.props
+    return (
+      <InspectorSection title="Ikon">
+        <SelectInput
+          label="Ikon"
+          value={p.iconName}
+          options={[
+            'heart',
+            'star',
+            'check',
+            'arrow',
+            'gift',
+            'cake',
+            'confetti',
+            'flower',
+            'image',
+            'map-pin',
+            'calendar',
+          ].map((name) => [name, name] as [string, string])}
+          onChange={(iconName) => onUpdateProps({ iconName })}
+        />
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <NumInput
+            label="Ukuran"
+            value={p.size ?? 32}
+            min={8}
+            max={512}
+            onChange={(size) => onUpdateProps({ size })}
+          />
+          <NumInput
+            label="Tebal garis"
+            value={p.strokeWidth ?? 2}
+            min={0.5}
+            max={4}
+            step={0.25}
+            onChange={(strokeWidth) => onUpdateProps({ strokeWidth })}
+          />
+          <NumInput
+            label="Sudut latar"
+            value={p.borderRadius ?? 0}
+            min={0}
+            max={200}
+            onChange={(borderRadius) => onUpdateProps({ borderRadius })}
+          />
+        </div>
+        <ColorInput
+          label="Warna ikon"
+          value={p.color ?? '#6D5EF7'}
+          onChange={(color) => onUpdateProps({ color })}
+        />
+        <ColorInput
+          label="Warna latar"
+          value={p.backgroundColor ?? '#FFFFFF'}
+          onChange={(backgroundColor) => onUpdateProps({ backgroundColor })}
+        />
+        <TextInput
+          label="Label aksesibilitas"
+          value={p.accessibleLabel ?? ''}
+          onChange={(accessibleLabel) =>
+            onUpdateProps({ accessibleLabel: accessibleLabel || undefined })
+          }
+        />
+      </InspectorSection>
+    )
+  }
+
   if (element.type === 'button') {
     const p = element.props
     return (
@@ -1090,6 +1864,82 @@ function ElementPropsInspector({
           onCommit={(v) => onUpdateProps({ url: v })}
         />
         <div className="mt-2 grid grid-cols-2 gap-2">
+          <SelectInput
+            label="Varian"
+            value={p.variant}
+            options={[
+              ['primary', 'Primary'],
+              ['secondary', 'Secondary'],
+              ['ghost', 'Ghost'],
+            ]}
+            onChange={(variant) => onUpdateProps({ variant })}
+          />
+          <SelectInput
+            label="Posisi ikon"
+            value={p.iconPosition ?? 'left'}
+            options={[
+              ['left', 'Kiri'],
+              ['right', 'Kanan'],
+            ]}
+            onChange={(iconPosition) => onUpdateProps({ iconPosition })}
+          />
+          <NumInput
+            label="Sudut"
+            value={p.borderRadius ?? 24}
+            min={0}
+            max={50}
+            onChange={(borderRadius) => onUpdateProps({ borderRadius })}
+          />
+          <NumInput
+            label="Tebal border"
+            value={p.borderWidth ?? 0}
+            min={0}
+            max={20}
+            onChange={(borderWidth) => onUpdateProps({ borderWidth })}
+          />
+          <NumInput
+            label="Ukuran font"
+            value={p.fontSize ?? 14}
+            min={8}
+            max={100}
+            onChange={(fontSize) => onUpdateProps({ fontSize })}
+          />
+          <NumInput
+            label="Berat font"
+            value={p.fontWeight ?? 600}
+            min={100}
+            max={900}
+            step={100}
+            onChange={(fontWeight) => onUpdateProps({ fontWeight })}
+          />
+        </div>
+        <SelectInput
+          className="mt-2"
+          label="Ikon"
+          value={p.iconName ?? ''}
+          options={[
+            ['', 'Tanpa ikon'],
+            ['heart', 'Hati'],
+            ['star', 'Bintang'],
+            ['gift', 'Hadiah'],
+            ['calendar', 'Kalender'],
+            ['arrow', 'Panah'],
+          ]}
+          onChange={(iconName) => onUpdateProps({ iconName: iconName || undefined })}
+        />
+        <SelectInput
+          className="mt-2"
+          label="Font"
+          value={p.fontFamily ?? 'Inter, sans-serif'}
+          options={[
+            ['Inter, sans-serif', 'Inter'],
+            ['Georgia, serif', 'Georgia'],
+            ['Arial, sans-serif', 'Arial'],
+            ['Courier New, monospace', 'Courier New'],
+          ]}
+          onChange={(fontFamily) => onUpdateProps({ fontFamily })}
+        />
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <ColorInput
             label="Warna tombol"
             value={p.backgroundColor ?? '#6D5EF7'}
@@ -1101,6 +1951,154 @@ function ElementPropsInspector({
             onChange={(v) => onUpdateProps({ textColor: v })}
           />
         </div>
+        <ColorInput
+          label="Warna border"
+          value={p.borderColor ?? '#6D5EF7'}
+          onChange={(borderColor) => onUpdateProps({ borderColor })}
+        />
+      </InspectorSection>
+    )
+  }
+
+  if (element.type === 'audioControl') {
+    const p = element.props
+    return (
+      <InspectorSection title="Audio">
+        <TextInput
+          label="Label"
+          value={p.label ?? ''}
+          onChange={(label) => onUpdateProps({ label })}
+        />
+        <CheckInput
+          label="Mode ringkas"
+          checked={p.compact}
+          onChange={(compact) => onUpdateProps({ compact })}
+        />
+        <ColorInput
+          label="Warna ikon & teks"
+          value={p.color ?? '#6D5EF7'}
+          onChange={(color) => onUpdateProps({ color })}
+        />
+        <ColorInput
+          label="Warna latar"
+          value={p.backgroundColor ?? '#FFFFFF'}
+          onChange={(backgroundColor) => onUpdateProps({ backgroundColor })}
+        />
+      </InspectorSection>
+    )
+  }
+
+  if (element.type === 'countdown') {
+    const p = element.props
+    return (
+      <InspectorSection title="Hitung Mundur">
+        <DateTimeInput
+          label="Target"
+          value={p.target}
+          onChange={(target) => onUpdateProps({ target })}
+        />
+        <TextInput label="Judul" value={p.label} onChange={(label) => onUpdateProps({ label })} />
+        <TextInput
+          label="Teks setelah selesai"
+          value={p.expiredLabel}
+          onChange={(expiredLabel) => onUpdateProps({ expiredLabel })}
+        />
+        <CheckInput
+          label="Tampilkan label waktu"
+          checked={p.showLabels}
+          onChange={(showLabels) => onUpdateProps({ showLabels })}
+        />
+        <ColorInput
+          label="Warna teks"
+          value={p.color ?? '#17171C'}
+          onChange={(color) => onUpdateProps({ color })}
+        />
+        <ColorInput
+          label="Warna aksen"
+          value={p.accentColor ?? '#6D5EF7'}
+          onChange={(accentColor) => onUpdateProps({ accentColor })}
+        />
+      </InspectorSection>
+    )
+  }
+
+  if (element.type === 'location') {
+    const p = element.props
+    return (
+      <InspectorSection title="Lokasi">
+        <TextInput
+          label="Nama tempat"
+          value={p.name}
+          onChange={(name) => onUpdateProps({ name })}
+        />
+        <TextInput
+          label="Alamat"
+          value={p.address}
+          onChange={(address) => onUpdateProps({ address })}
+          multiline
+        />
+        <UrlInput
+          className="mt-2"
+          label="URL petunjuk arah"
+          value={p.directionsUrl ?? ''}
+          onCommit={(directionsUrl) => onUpdateProps({ directionsUrl })}
+        />
+        <UrlInput
+          className="mt-2"
+          label="URL embed peta"
+          value={p.mapEmbedUrl ?? ''}
+          onCommit={(mapEmbedUrl) => onUpdateProps({ mapEmbedUrl })}
+        />
+        <TextInput
+          label="Label tombol"
+          value={p.buttonLabel}
+          onChange={(buttonLabel) => onUpdateProps({ buttonLabel })}
+        />
+        <CheckInput
+          label="Tampilkan area peta"
+          checked={p.showMap}
+          onChange={(showMap) => onUpdateProps({ showMap })}
+        />
+      </InspectorSection>
+    )
+  }
+
+  if (element.type === 'saveDate') {
+    const p = element.props
+    return (
+      <InspectorSection title="Simpan Tanggal">
+        <TextInput
+          label="Judul acara"
+          value={p.title}
+          onChange={(title) => onUpdateProps({ title })}
+        />
+        <DateTimeInput
+          label="Mulai"
+          value={p.startAt}
+          onChange={(startAt) => onUpdateProps({ startAt })}
+        />
+        <DateTimeInput
+          label="Selesai"
+          value={p.endAt ?? ''}
+          onChange={(endAt) => onUpdateProps({ endAt: endAt || undefined })}
+          allowEmpty
+        />
+        <TextInput
+          label="Lokasi"
+          value={p.location ?? ''}
+          onChange={(location) => onUpdateProps({ location: location || undefined })}
+        />
+        <TextInput
+          label="Deskripsi"
+          value={p.description ?? ''}
+          onChange={(description) => onUpdateProps({ description: description || undefined })}
+          multiline
+        />
+        <TextInput
+          label="Label tombol"
+          value={p.buttonLabel}
+          onChange={(buttonLabel) => onUpdateProps({ buttonLabel })}
+        />
       </InspectorSection>
     )
   }
@@ -1112,9 +2110,13 @@ function ElementPropsInspector({
 
 function SceneInspector({
   scene,
+  theme,
+  onUpdateTheme,
   onUpdateBackground,
 }: {
   scene: Scene
+  theme: Theme
+  onUpdateTheme: (theme: Theme, applyToElements?: boolean) => void
   onUpdateBackground: (bg: Scene['background']) => void
 }) {
   const bg = scene.background
@@ -1193,6 +2195,65 @@ function SceneInspector({
             onCommit={(v) => onUpdateBackground({ ...bg, src: v })}
           />
         )}
+      </InspectorSection>
+
+      <InspectorSection title="Tema Kreasi">
+        <ColorInput
+          label="Primer"
+          value={theme.primary}
+          onChange={(primary) => onUpdateTheme({ ...theme, primary })}
+        />
+        <ColorInput
+          label="Sekunder"
+          value={theme.secondary}
+          onChange={(secondary) => onUpdateTheme({ ...theme, secondary })}
+        />
+        <ColorInput
+          label="Aksen"
+          value={theme.accent}
+          onChange={(accent) => onUpdateTheme({ ...theme, accent })}
+        />
+        <ColorInput
+          label="Teks"
+          value={theme.text}
+          onChange={(text) => onUpdateTheme({ ...theme, text })}
+        />
+        <ColorInput
+          label="Permukaan"
+          value={theme.surface}
+          onChange={(surface) => onUpdateTheme({ ...theme, surface })}
+        />
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <SelectInput
+            label="Font judul"
+            value={theme.headingFont}
+            options={[
+              ['Georgia, serif', 'Georgia'],
+              ['Inter, sans-serif', 'Inter'],
+              ['Times New Roman, serif', 'Times'],
+              ['Arial, sans-serif', 'Arial'],
+            ]}
+            onChange={(headingFont) => onUpdateTheme({ ...theme, headingFont })}
+          />
+          <SelectInput
+            label="Font isi"
+            value={theme.bodyFont}
+            options={[
+              ['Inter, sans-serif', 'Inter'],
+              ['Arial, sans-serif', 'Arial'],
+              ['Georgia, serif', 'Georgia'],
+              ['Courier New, monospace', 'Courier'],
+            ]}
+            onChange={(bodyFont) => onUpdateTheme({ ...theme, bodyFont })}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => onUpdateTheme(theme, true)}
+          className="border-primary text-primary hover:bg-primary-subtle mt-3 w-full rounded-sm border py-1.5 text-xs font-medium transition-colors"
+        >
+          Terapkan tema ke semua elemen
+        </button>
       </InspectorSection>
 
       <InspectorSection title="Ukuran">
@@ -1278,6 +2339,163 @@ function NumInput({
         }}
         onBlur={() => commit(text)}
         className="border-border-strong bg-background text-text-primary focus:border-primary focus:ring-primary w-full rounded-sm border px-2 py-1 text-right text-xs tabular-nums outline-none focus:ring-1 disabled:opacity-50"
+      />
+    </label>
+  )
+}
+
+function CheckInput({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="text-text-secondary mt-2 flex cursor-pointer items-center gap-2 text-xs">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="accent-primary h-3.5 w-3.5 rounded-sm"
+      />
+      {label}
+    </label>
+  )
+}
+
+function RangeInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="mt-2 block">
+      <span className="text-text-secondary flex items-center justify-between text-xs">
+        <span>{label}</span>
+        <span className="text-text-muted tabular-nums">{Math.round(value * 100) / 100}</span>
+      </span>
+      <input
+        type="range"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="accent-primary mt-1 w-full"
+      />
+    </label>
+  )
+}
+
+function SelectInput({
+  label,
+  value,
+  options,
+  onChange,
+  className = '',
+}: {
+  label: string
+  value: string
+  options: readonly (readonly [string, string])[]
+  onChange: (value: string) => void
+  className?: string
+}) {
+  return (
+    <label className={`block ${className}`}>
+      <span className="text-text-muted text-[10px]">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="border-border-strong bg-background text-text-primary focus:border-primary mt-0.5 w-full rounded-sm border px-2 py-1 text-xs outline-none"
+      >
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function TextInput({
+  label,
+  value,
+  onChange,
+  multiline = false,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  multiline?: boolean
+}) {
+  const classes =
+    'border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none'
+  return (
+    <label className="text-text-secondary mt-2 block text-xs">
+      {label}
+      {multiline ? (
+        <textarea
+          value={value}
+          rows={3}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${classes} resize-y`}
+        />
+      ) : (
+        <input
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={classes}
+        />
+      )}
+    </label>
+  )
+}
+
+function toDateTimeLocal(value: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+
+function DateTimeInput({
+  label,
+  value,
+  onChange,
+  allowEmpty = false,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  allowEmpty?: boolean
+}) {
+  return (
+    <label className="text-text-secondary mt-2 block text-xs">
+      {label}
+      <input
+        type="datetime-local"
+        value={toDateTimeLocal(value)}
+        onChange={(event) => {
+          if (event.target.value === '' && allowEmpty) onChange('')
+          else if (event.target.value) onChange(new Date(event.target.value).toISOString())
+        }}
+        className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
       />
     </label>
   )
@@ -1479,23 +2697,31 @@ const ELEMENT_TYPE_LABELS: Record<ElementNode['type'], string> = {
   icon: 'Ikon',
   button: 'Tombol',
   audioControl: 'Audio',
+  countdown: 'Hitung Mundur',
+  location: 'Lokasi',
+  saveDate: 'Simpan Tanggal',
 }
 
 function elementLayerName(element: ElementNode): string {
+  if (element.layerName) return element.layerName
   if (element.type === 'text') return element.props.content.trim().split('\n')[0] || 'Teks kosong'
   if (element.type === 'image') return element.props.alt || 'Gambar'
   if (element.type === 'button') return element.props.label || 'Tombol'
   if (element.type === 'icon') return element.props.iconName
   if (element.type === 'shape') return element.props.shape
-  return element.props.label ?? 'Kontrol audio'
+  if (element.type === 'audioControl') return element.props.label ?? 'Kontrol audio'
+  if (element.type === 'countdown') return element.props.label
+  if (element.type === 'location') return element.props.name
+  return element.props.title
 }
 
 /** Daftar layer dari depan ke belakang dengan drag-and-drop dan kontrol presisi. */
 function LayerPanel() {
   const scene = useEditorStore((s) => s.document.scenes.find((sc) => sc.id === s.selectedSceneId))
   const selectedElementId = useEditorStore((s) => s.selectedElementId)
+  const selectedElementIds = useEditorStore((s) => s.selectedElementIds)
   const selectElement = useEditorStore((s) => s.selectElement)
-  const updateElement = useEditorStore((s) => s.updateElement)
+  const updateElement = useEditorStore((s) => s.updateElementWithHistory)
   const deleteElement = useEditorStore((s) => s.deleteElement)
   const reorderElementZ = useEditorStore((s) => s.reorderElementZ)
   const reorderElements = useEditorStore((s) => s.reorderElements)
@@ -1543,7 +2769,8 @@ function LayerPanel() {
       </p>
       <div className="space-y-1.5">
         {layers.map((element, index) => {
-          const selected = element.id === selectedElementId
+          const selected =
+            element.id === selectedElementId || selectedElementIds.includes(element.id)
           return (
             <div
               key={element.id}
@@ -1576,7 +2803,7 @@ function LayerPanel() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => selectElement(element.id)}
+                  onClick={(event) => selectElement(element.id, event.shiftKey)}
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="text-text-primary block truncate text-xs font-medium">
@@ -1631,6 +2858,17 @@ function LayerPanel() {
                 </button>
                 <button
                   type="button"
+                  onClick={() =>
+                    updateElement(sceneId, element.id, { visible: element.visible === false })
+                  }
+                  className={`border-border flex-1 rounded-sm border py-1 text-[10px] ${element.visible === false ? 'text-text-muted' : 'text-info'}`}
+                  title={element.visible === false ? 'Tampilkan elemen' : 'Sembunyikan elemen'}
+                  aria-label={element.visible === false ? 'Tampilkan elemen' : 'Sembunyikan elemen'}
+                >
+                  {element.visible === false ? 'H' : 'V'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => updateElement(sceneId, element.id, { locked: !element.locked })}
                   className={`border-border flex-1 rounded-sm border py-1 text-[10px] ${
                     element.locked ? 'text-warning' : 'text-text-secondary'
@@ -1659,6 +2897,9 @@ function LayerPanel() {
 // ─── Elemen panel ─────────────────────────────────────────────────────────────
 
 const ELEMENT_TYPES: { type: ElementNode['type']; label: string; icon: string }[] = [
+  { type: 'countdown', label: 'Hitung Mundur', icon: 'TMR' },
+  { type: 'location', label: 'Lokasi', icon: 'MAP' },
+  { type: 'saveDate', label: 'Simpan Tanggal', icon: 'CAL' },
   { type: 'text', label: 'Teks', icon: 'T' },
   { type: 'image', label: 'Gambar', icon: '🖼' },
   { type: 'shape', label: 'Bentuk', icon: '⬟' },
@@ -1677,6 +2918,11 @@ function makeDefaultElement(type: ElementNode['type']): ElementNode {
     zIndex: 1,
     locked: false,
     rotation: 0,
+    visible: true,
+    opacity: 1,
+    flipX: false,
+    flipY: false,
+    aspectLocked: false,
   }
   switch (type) {
     case 'text':
@@ -1737,6 +2983,49 @@ function makeDefaultElement(type: ElementNode['type']): ElementNode {
         height: 44,
         props: { label: 'Putar Musik', compact: false },
       }
+    case 'countdown': {
+      const target = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      return {
+        ...base,
+        type: 'countdown',
+        height: 110,
+        props: {
+          target,
+          label: 'Menuju hari spesial',
+          expiredLabel: 'Acara telah dimulai',
+          showLabels: true,
+          color: '#17171C',
+          accentColor: '#6D5EF7',
+        },
+      }
+    }
+    case 'location':
+      return {
+        ...base,
+        type: 'location',
+        height: 190,
+        props: {
+          name: 'Lokasi acara',
+          address: 'Tambahkan alamat lengkap',
+          buttonLabel: 'Buka Petunjuk Arah',
+          showMap: true,
+        },
+      }
+    case 'saveDate': {
+      const startAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      const endAt = new Date(startAt.getTime() + 2 * 60 * 60 * 1000)
+      return {
+        ...base,
+        type: 'saveDate',
+        height: 100,
+        props: {
+          title: 'Acara spesial',
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+          buttonLabel: 'Simpan ke Kalender',
+        },
+      }
+    }
   }
 }
 

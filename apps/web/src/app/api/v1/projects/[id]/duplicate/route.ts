@@ -4,7 +4,11 @@ import { requireAuth } from '@/lib/api/auth'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { created, notFound, serverError, unprocessable } from '@/lib/api/response'
 import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
-import { ProjectDocumentSchema, type ProjectDocument } from '@openwish/project-schema'
+import {
+  CURRENT_SCHEMA_VERSION,
+  safeMigrateDocument,
+  type ProjectDocument,
+} from '@openwish/project-schema'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
     return unprocessable('Nama kreasi terlalu panjang (maks. 120 karakter).')
   }
 
-  const sourceDoc = ProjectDocumentSchema.safeParse(source.draft_document)
+  const sourceDoc = safeMigrateDocument(source.draft_document)
   if (!sourceDoc.success) {
     return unprocessable('Dokumen sumber tidak valid. Buka dan simpan ulang terlebih dahulu.')
   }
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       owner_id: user!.id,
       created_by: user!.id,
       draft_document: JSON.parse(JSON.stringify(clonedDoc)),
-      schema_version: source.schema_version ?? 1,
+      schema_version: CURRENT_SCHEMA_VERSION,
     })
     .select('id, name, status, updated_at, created_at')
     .single()

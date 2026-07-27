@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { ProjectDocumentSchema, type ProjectDocument } from '@openwish/project-schema'
+import { safeMigrateDocument, type ProjectDocument } from '@openwish/project-schema'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { PublicViewer } from './_components/PublicViewer'
 import { cache } from 'react'
@@ -39,7 +39,7 @@ const fetchPublishedPage = cache(
 
     // Render boundary: a snapshot that no longer satisfies the schema is treated
     // as missing rather than handed to the renderer as an unchecked cast.
-    const parsed = ProjectDocumentSchema.safeParse(version.document_snapshot)
+    const parsed = safeMigrateDocument(version.document_snapshot)
     if (!parsed.success) return null
 
     return {

@@ -12,6 +12,7 @@ interface DragStartPayload {
   startY: number
   startW: number
   startH: number
+  aspectLocked?: boolean
 }
 
 interface UseDragOptions {
@@ -26,6 +27,40 @@ interface UseDragOptions {
 interface DragState extends DragStartPayload {
   pointerStartX: number
   pointerStartY: number
+}
+
+function resizePatch(d: DragState, dx: number, dy: number) {
+  const minW = 8
+  const minH = 8
+  const ratio = d.startW / d.startH
+  let x = d.startX
+  let y = d.startY
+  let w = d.startW
+  let h = d.startH
+
+  if (d.handle === 'nw') {
+    w = Math.max(minW, d.startW - dx)
+    h = Math.max(minH, d.startH - dy)
+  } else if (d.handle === 'ne') {
+    w = Math.max(minW, d.startW + dx)
+    h = Math.max(minH, d.startH - dy)
+  } else if (d.handle === 'sw') {
+    w = Math.max(minW, d.startW - dx)
+    h = Math.max(minH, d.startH + dy)
+  } else if (d.handle === 'se') {
+    w = Math.max(minW, d.startW + dx)
+    h = Math.max(minH, d.startH + dy)
+  }
+
+  if (d.aspectLocked) {
+    if (Math.abs(dx) >= Math.abs(dy)) h = Math.max(minH, w / ratio)
+    else w = Math.max(minW, h * ratio)
+  }
+
+  if (d.handle === 'nw' || d.handle === 'sw') x = d.startX + d.startW - w
+  if (d.handle === 'nw' || d.handle === 'ne') y = d.startY + d.startH - h
+
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) }
 }
 
 export function useDrag({ zoom, onCommit }: UseDragOptions) {
@@ -64,33 +99,7 @@ export function useDrag({ zoom, onCommit }: UseDragOptions) {
           y: Math.round(d.startY + dy),
         }
       } else {
-        // Corner resize
-        const minW = 8
-        const minH = 8
-        let x = d.startX
-        let y = d.startY
-        let w = d.startW
-        let h = d.startH
-
-        if (d.handle === 'nw') {
-          w = Math.max(minW, d.startW - dx)
-          h = Math.max(minH, d.startH - dy)
-          x = d.startX + d.startW - w
-          y = d.startY + d.startH - h
-        } else if (d.handle === 'ne') {
-          w = Math.max(minW, d.startW + dx)
-          h = Math.max(minH, d.startH - dy)
-          y = d.startY + d.startH - h
-        } else if (d.handle === 'sw') {
-          w = Math.max(minW, d.startW - dx)
-          h = Math.max(minH, d.startH + dy)
-          x = d.startX + d.startW - w
-        } else if (d.handle === 'se') {
-          w = Math.max(minW, d.startW + dx)
-          h = Math.max(minH, d.startH + dy)
-        }
-
-        patch = { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) }
+        patch = resizePatch(d, dx, dy)
       }
 
       liveUpdate(d.elementId, patch)
@@ -122,30 +131,7 @@ export function useDrag({ zoom, onCommit }: UseDragOptions) {
       if (d.handle === 'move') {
         patch = { x: Math.round(d.startX + dx), y: Math.round(d.startY + dy) }
       } else {
-        const minW = 8
-        const minH = 8
-        let x = d.startX,
-          y = d.startY,
-          w = d.startW,
-          h = d.startH
-        if (d.handle === 'nw') {
-          w = Math.max(minW, d.startW - dx)
-          h = Math.max(minH, d.startH - dy)
-          x = d.startX + d.startW - w
-          y = d.startY + d.startH - h
-        } else if (d.handle === 'ne') {
-          w = Math.max(minW, d.startW + dx)
-          h = Math.max(minH, d.startH - dy)
-          y = d.startY + d.startH - h
-        } else if (d.handle === 'sw') {
-          w = Math.max(minW, d.startW - dx)
-          h = Math.max(minH, d.startH + dy)
-          x = d.startX + d.startW - w
-        } else if (d.handle === 'se') {
-          w = Math.max(minW, d.startW + dx)
-          h = Math.max(minH, d.startH + dy)
-        }
-        patch = { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) }
+        patch = resizePatch(d, dx, dy)
       }
 
       // Commit to history

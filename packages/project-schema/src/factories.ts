@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { ProjectDocument, Scene } from './document.schema'
-import { CURRENT_SCHEMA_VERSION } from './document.schema'
+import { CURRENT_SCHEMA_VERSION, DEFAULT_THEME } from './document.schema'
 
 export function createDefaultScene(overrides?: Partial<Scene>): Scene {
   return {
@@ -21,6 +21,7 @@ export function createDefaultDocument(title = 'Ucapan Saya'): ProjectDocument {
     project: {
       title,
       locale: 'id-ID',
+      theme: { ...DEFAULT_THEME },
     },
     scenes: [createDefaultScene()],
   }

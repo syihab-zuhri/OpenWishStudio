@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
-import { ProjectDocumentSchema, SceneSchema, type Scene } from '@openwish/project-schema'
+import { safeMigrateDocument, SceneSchema, type Scene } from '@openwish/project-schema'
 import { useEditorStore } from '@/features/editor/store/editorStore'
 
 const MAX_SCENES = 50
@@ -55,7 +55,7 @@ interface TemplateListItem {
 
 /** scene_document boleh berupa satu Scene, array Scene, atau ProjectDocument. */
 function parseTemplateScenes(doc: unknown): Scene[] | null {
-  const asDoc = ProjectDocumentSchema.safeParse(doc)
+  const asDoc = safeMigrateDocument(doc)
   if (asDoc.success) return asDoc.data.scenes
   const asScene = SceneSchema.safeParse(doc)
   if (asScene.success) return [asScene.data]

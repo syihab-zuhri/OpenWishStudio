@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { ProjectDocument, Scene, ElementNode, Soundtrack } from '@openwish/project-schema'
+import {
+  CURRENT_SCHEMA_VERSION,
+  DEFAULT_THEME,
+  type ProjectDocument,
+  type Scene,
+  type ElementNode,
+  type Soundtrack,
+  type Theme,
+} from '@openwish/project-schema'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,10 +25,14 @@ interface EditorState {
   document: ProjectDocument
   selectedSceneId: string | null
   selectedElementId: string | null
+  selectedElementIds: string[]
+  clipboard: ElementNode[]
   zoom: number
   saveStatus: SaveStatus
   past: HistoryFrame[]
   future: HistoryFrame[]
+  historyCoalesceKey: string | null
+  historyCoalesceAt: number
   /** Revisi draft terakhir yang diketahui dari server (baseRevision autosave). */
   draftRevision: number
   /** Mode tamu: draft disimpan di perangkat, bukan ke server. */
@@ -48,7 +60,8 @@ interface EditorActions {
   updateSceneBackground: (sceneId: string, background: Scene['background']) => void
   addScenes: (scenes: Scene[]) => void
   setSoundtrack: (soundtrack: Soundtrack | undefined) => void
-  selectElement: (elementId: string | null) => void
+  selectElement: (elementId: string | null, additive?: boolean) => void
+  selectElements: (elementIds: string[]) => void
   addElement: (sceneId: string, element: ElementNode) => void
   updateElement: (
     sceneId: string,
@@ -56,6 +69,11 @@ interface EditorActions {
     patch: Partial<
       Pick<ElementNode, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'locked'>
     >,
+  ) => void
+  updateElementWithHistory: (
+    sceneId: string,
+    elementId: string,
+    patch: Partial<ElementNode>,
   ) => void
   commitElementDrag: (
     sceneId: string,
@@ -65,6 +83,16 @@ interface EditorActions {
   ) => void
   updateElementProps: (sceneId: string, elementId: string, props: Record<string, unknown>) => void
   deleteElement: (sceneId: string, elementId: string) => void
+  deleteSelectedElements: () => void
+  duplicateSelectedElements: () => void
+  copySelectedElements: () => void
+  pasteElements: () => void
+  nudgeSelectedElements: (dx: number, dy: number) => void
+  alignSelectedElements: (mode: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => void
+  distributeSelectedElements: (axis: 'horizontal' | 'vertical') => void
+  groupSelectedElements: () => void
+  ungroupSelectedElements: () => void
+  setTheme: (theme: Theme, applyToElements?: boolean) => void
   /** Hapus semua elemen gambar yang merujuk aset yang sudah dihapus. */
   removeAssetReferences: (assetId: string) => void
   reorderElementZ: (
@@ -97,10 +125,31 @@ function makeDefaultScene(order: number): Scene {
   }
 }
 
-function withPushedHistory(state: EditorState): Pick<EditorState, 'past' | 'future'> {
+function withPushedHistory(
+  state: EditorState,
+  coalesceKey?: string,
+): Pick<EditorState, 'past' | 'future' | 'historyCoalesceKey' | 'historyCoalesceAt'> {
+  const now = Date.now()
+  if (
+    coalesceKey &&
+    state.historyCoalesceKey === coalesceKey &&
+    now - state.historyCoalesceAt < 700
+  ) {
+    return {
+      past: state.past,
+      future: state.future,
+      historyCoalesceKey: coalesceKey,
+      historyCoalesceAt: now,
+    }
+  }
   const newPast = [...state.past, { document: cloneDoc(state.document) }]
   if (newPast.length > MAX_HISTORY) newPast.shift()
-  return { past: newPast, future: [] }
+  return {
+    past: newPast,
+    future: [],
+    historyCoalesceKey: coalesceKey ?? null,
+    historyCoalesceAt: coalesceKey ? now : 0,
+  }
 }
 
 function mapScenes(
@@ -120,16 +169,20 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   projectId: '',
   projectName: '',
   document: {
-    schemaVersion: 1,
-    project: { title: '', locale: 'id-ID' },
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    project: { title: '', locale: 'id-ID', theme: { ...DEFAULT_THEME } },
     scenes: [],
   },
   selectedSceneId: null,
   selectedElementId: null,
+  selectedElementIds: [],
+  clipboard: [],
   zoom: 1,
   saveStatus: 'saved',
   past: [],
   future: [],
+  historyCoalesceKey: null,
+  historyCoalesceAt: 0,
   draftRevision: 0,
   isGuest: false,
   saveRequestNonce: 0,
@@ -173,7 +226,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   // ── Scene selection ──────────────────────────────────────────────────────────
 
   selectScene(sceneId) {
-    set({ selectedSceneId: sceneId, selectedElementId: null })
+    set({ selectedSceneId: sceneId, selectedElementId: null, selectedElementIds: [] })
   },
 
   // ── Scene mutations ──────────────────────────────────────────────────────────
@@ -186,6 +239,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         document: { ...s.document, scenes: [...s.document.scenes, newScene] },
         selectedSceneId: newScene.id,
         selectedElementId: null,
+        selectedElementIds: [],
         saveStatus: 'unsaved' as SaveStatus,
       }
     })
@@ -209,6 +263,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         document: { ...s.document, scenes: newScenes },
         selectedSceneId: newSelectedId,
         selectedElementId: s.selectedSceneId === sceneId ? null : s.selectedElementId,
+        selectedElementIds: s.selectedSceneId === sceneId ? [] : s.selectedElementIds,
         saveStatus: 'unsaved' as SaveStatus,
       }
     })
@@ -235,6 +290,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         document: { ...s.document, scenes: newScenes },
         selectedSceneId: copy.id,
         selectedElementId: null,
+        selectedElementIds: [],
         saveStatus: 'unsaved' as SaveStatus,
       }
     })
@@ -274,6 +330,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         document: { ...s.document, scenes: [...s.document.scenes, ...withOrder] },
         selectedSceneId: withOrder[0].id,
         selectedElementId: null,
+        selectedElementIds: [],
         saveStatus: 'unsaved' as SaveStatus,
       }
     })
@@ -290,10 +347,80 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
     }))
   },
 
+  setTheme(theme, applyToElements = false) {
+    set((s) => ({
+      ...withPushedHistory(s),
+      document: {
+        ...s.document,
+        project: { ...s.document.project, theme },
+        scenes: applyToElements
+          ? s.document.scenes.map((scene) => ({
+              ...scene,
+              elements: scene.elements.map((element) => {
+                if (element.type === 'text') {
+                  return {
+                    ...element,
+                    props: {
+                      ...element.props,
+                      color: theme.text,
+                      fontFamily:
+                        (element.props.fontWeight ?? 400) >= 600
+                          ? theme.headingFont
+                          : theme.bodyFont,
+                    },
+                  }
+                }
+                if (element.type === 'shape') {
+                  return { ...element, props: { ...element.props, fill: theme.primary } }
+                }
+                if (element.type === 'icon') {
+                  return { ...element, props: { ...element.props, color: theme.secondary } }
+                }
+                if (element.type === 'button') {
+                  return {
+                    ...element,
+                    props: {
+                      ...element.props,
+                      backgroundColor: theme.primary,
+                      textColor: theme.surface,
+                    },
+                  }
+                }
+                if (element.type === 'countdown') {
+                  return {
+                    ...element,
+                    props: { ...element.props, color: theme.text, accentColor: theme.primary },
+                  }
+                }
+                return element
+              }),
+            }))
+          : s.document.scenes,
+      },
+      saveStatus: 'unsaved' as SaveStatus,
+    }))
+  },
+
   // ── Element selection ────────────────────────────────────────────────────────
 
-  selectElement(elementId) {
-    set({ selectedElementId: elementId })
+  selectElement(elementId, additive = false) {
+    set((s) => {
+      if (!elementId) return { selectedElementId: null, selectedElementIds: [] }
+      if (!additive) return { selectedElementId: elementId, selectedElementIds: [elementId] }
+      const exists = s.selectedElementIds.includes(elementId)
+      const selectedElementIds = exists
+        ? s.selectedElementIds.filter((id) => id !== elementId)
+        : [...s.selectedElementIds, elementId]
+      return {
+        selectedElementIds,
+        selectedElementId: exists ? (selectedElementIds.at(-1) ?? null) : elementId,
+      }
+    })
+  },
+
+  selectElements(elementIds) {
+    const unique = [...new Set(elementIds)]
+    set({ selectedElementIds: unique, selectedElementId: unique.at(-1) ?? null })
   },
 
   // ── Element mutations ─────────────────────────────────────────────────────────
@@ -306,12 +433,26 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         elements: [...sc.elements, element],
       })),
       selectedElementId: element.id,
+      selectedElementIds: [element.id],
       saveStatus: 'unsaved' as SaveStatus,
     }))
   },
 
   updateElement(sceneId, elementId, patch) {
     set((s) => ({
+      document: mapScenes(s.document, sceneId, (sc) => ({
+        ...sc,
+        elements: sc.elements.map((el) =>
+          el.id === elementId ? ({ ...el, ...patch } as ElementNode) : el,
+        ),
+      })),
+      saveStatus: 'unsaved' as SaveStatus,
+    }))
+  },
+
+  updateElementWithHistory(sceneId, elementId, patch) {
+    set((s) => ({
+      ...withPushedHistory(s, `element:${sceneId}:${elementId}`),
       document: mapScenes(s.document, sceneId, (sc) => ({
         ...sc,
         elements: sc.elements.map((el) =>
@@ -348,6 +489,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
 
   updateElementProps(sceneId, elementId, props) {
     set((s) => ({
+      ...withPushedHistory(s, `props:${sceneId}:${elementId}`),
       document: mapScenes(s.document, sceneId, (sc) => ({
         ...sc,
         elements: sc.elements.map((el) =>
@@ -366,8 +508,243 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         elements: sc.elements.filter((el) => el.id !== elementId),
       })),
       selectedElementId: s.selectedElementId === elementId ? null : s.selectedElementId,
+      selectedElementIds: s.selectedElementIds.filter((id) => id !== elementId),
       saveStatus: 'unsaved' as SaveStatus,
     }))
+  },
+
+  deleteSelectedElements() {
+    set((s) => {
+      if (!s.selectedSceneId || !s.selectedElementIds.length) return s
+      const selected = new Set(s.selectedElementIds)
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, s.selectedSceneId, (scene) => ({
+          ...scene,
+          elements: scene.elements.filter((element) => !selected.has(element.id)),
+        })),
+        selectedElementId: null,
+        selectedElementIds: [],
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  duplicateSelectedElements() {
+    set((s) => {
+      if (!s.selectedSceneId || !s.selectedElementIds.length) return s
+      const scene = s.document.scenes.find((item) => item.id === s.selectedSceneId)
+      if (!scene) return s
+      const selected = new Set(s.selectedElementIds)
+      const source = scene.elements.filter((element) => selected.has(element.id))
+      if (!source.length) return s
+      const maxZ = scene.elements.reduce((max, element) => Math.max(max, element.zIndex), 0)
+      const groupIds = new Map<string, string>()
+      const copies = source.map((element, index) => {
+        const groupId = element.groupId
+          ? (groupIds.get(element.groupId) ??
+            (() => {
+              const id = uuidv4()
+              groupIds.set(element.groupId!, id)
+              return id
+            })())
+          : undefined
+        return {
+          ...cloneDoc({ ...s.document, scenes: [{ ...scene, elements: [element] }] }).scenes[0]
+            .elements[0],
+          id: uuidv4(),
+          layerName: element.layerName ? `${element.layerName} copy` : undefined,
+          x: element.x + 12,
+          y: element.y + 12,
+          zIndex: maxZ + index + 1,
+          groupId,
+        } as ElementNode
+      })
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, s.selectedSceneId, (item) => ({
+          ...item,
+          elements: [...item.elements, ...copies],
+        })),
+        selectedElementId: copies.at(-1)?.id ?? null,
+        selectedElementIds: copies.map((element) => element.id),
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  copySelectedElements() {
+    set((s) => {
+      if (!s.selectedSceneId || !s.selectedElementIds.length) return s
+      const scene = s.document.scenes.find((item) => item.id === s.selectedSceneId)
+      if (!scene) return s
+      const selected = new Set(s.selectedElementIds)
+      return {
+        clipboard: cloneDoc({ ...s.document, scenes: [{ ...scene }] }).scenes[0].elements.filter(
+          (element) => selected.has(element.id),
+        ),
+      }
+    })
+  },
+
+  pasteElements() {
+    set((s) => {
+      if (!s.selectedSceneId || !s.clipboard.length) return s
+      const scene = s.document.scenes.find((item) => item.id === s.selectedSceneId)
+      if (!scene) return s
+      const maxZ = scene.elements.reduce((max, element) => Math.max(max, element.zIndex), 0)
+      const copies = s.clipboard.map((element, index) => ({
+        ...element,
+        id: uuidv4(),
+        x: element.x + 16,
+        y: element.y + 16,
+        zIndex: maxZ + index + 1,
+        groupId: undefined,
+      })) as ElementNode[]
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, s.selectedSceneId, (item) => ({
+          ...item,
+          elements: [...item.elements, ...copies],
+        })),
+        selectedElementId: copies.at(-1)?.id ?? null,
+        selectedElementIds: copies.map((element) => element.id),
+        clipboard: copies,
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  nudgeSelectedElements(dx, dy) {
+    set((s) => {
+      if (!s.selectedSceneId || !s.selectedElementIds.length) return s
+      const selected = new Set(s.selectedElementIds)
+      return {
+        ...withPushedHistory(s, `nudge:${s.selectedSceneId}:${s.selectedElementIds.join(',')}`),
+        document: mapScenes(s.document, s.selectedSceneId, (scene) => ({
+          ...scene,
+          elements: scene.elements.map((element) =>
+            selected.has(element.id)
+              ? { ...element, x: element.x + dx, y: element.y + dy }
+              : element,
+          ),
+        })),
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  alignSelectedElements(mode) {
+    set((s) => {
+      if (!s.selectedSceneId || !s.selectedElementIds.length) return s
+      const scene = s.document.scenes.find((item) => item.id === s.selectedSceneId)
+      if (!scene) return s
+      const selected = new Set(s.selectedElementIds)
+      const elements = scene.elements.filter((element) => selected.has(element.id))
+      if (!elements.length) return s
+      const left = elements.length === 1 ? 0 : Math.min(...elements.map((element) => element.x))
+      const top = elements.length === 1 ? 0 : Math.min(...elements.map((element) => element.y))
+      const right =
+        elements.length === 1
+          ? scene.baseWidth
+          : Math.max(...elements.map((element) => element.x + element.width))
+      const bottom =
+        elements.length === 1
+          ? scene.baseHeight
+          : Math.max(...elements.map((element) => element.y + element.height))
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, s.selectedSceneId, (item) => ({
+          ...item,
+          elements: item.elements.map((element) => {
+            if (!selected.has(element.id)) return element
+            if (mode === 'left') return { ...element, x: left }
+            if (mode === 'center') return { ...element, x: (left + right - element.width) / 2 }
+            if (mode === 'right') return { ...element, x: right - element.width }
+            if (mode === 'top') return { ...element, y: top }
+            if (mode === 'middle') return { ...element, y: (top + bottom - element.height) / 2 }
+            return { ...element, y: bottom - element.height }
+          }),
+        })),
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  distributeSelectedElements(axis) {
+    set((s) => {
+      if (!s.selectedSceneId || s.selectedElementIds.length < 3) return s
+      const scene = s.document.scenes.find((item) => item.id === s.selectedSceneId)
+      if (!scene) return s
+      const selected = new Set(s.selectedElementIds)
+      const sorted = scene.elements
+        .filter((element) => selected.has(element.id))
+        .sort((a, b) => (axis === 'horizontal' ? a.x - b.x : a.y - b.y))
+      const first = sorted[0]
+      const last = sorted.at(-1)!
+      const span =
+        axis === 'horizontal' ? last.x + last.width - first.x : last.y + last.height - first.y
+      const occupied = sorted.reduce(
+        (total, element) => total + (axis === 'horizontal' ? element.width : element.height),
+        0,
+      )
+      const gap = (span - occupied) / (sorted.length - 1)
+      const positions = new Map<string, number>()
+      let cursor = axis === 'horizontal' ? first.x : first.y
+      sorted.forEach((element) => {
+        positions.set(element.id, cursor)
+        cursor += (axis === 'horizontal' ? element.width : element.height) + gap
+      })
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, s.selectedSceneId, (item) => ({
+          ...item,
+          elements: item.elements.map((element) =>
+            selected.has(element.id)
+              ? axis === 'horizontal'
+                ? { ...element, x: positions.get(element.id)! }
+                : { ...element, y: positions.get(element.id)! }
+              : element,
+          ),
+        })),
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  groupSelectedElements() {
+    set((s) => {
+      if (!s.selectedSceneId || s.selectedElementIds.length < 2) return s
+      const selected = new Set(s.selectedElementIds)
+      const groupId = uuidv4()
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, s.selectedSceneId, (scene) => ({
+          ...scene,
+          elements: scene.elements.map((element) =>
+            selected.has(element.id) ? { ...element, groupId } : element,
+          ),
+        })),
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
+  ungroupSelectedElements() {
+    set((s) => {
+      if (!s.selectedSceneId || !s.selectedElementIds.length) return s
+      const selected = new Set(s.selectedElementIds)
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, s.selectedSceneId, (scene) => ({
+          ...scene,
+          elements: scene.elements.map((element) =>
+            selected.has(element.id) ? { ...element, groupId: undefined } : element,
+          ),
+        })),
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
   },
 
   removeAssetReferences(assetId) {
@@ -408,6 +785,7 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         },
         selectedElementId:
           s.selectedElementId && removedIds.has(s.selectedElementId) ? null : s.selectedElementId,
+        selectedElementIds: s.selectedElementIds.filter((id) => !removedIds.has(id)),
         saveStatus: 'unsaved' as SaveStatus,
       }
     })
@@ -492,6 +870,9 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
         document: frame.document,
         selectedSceneId: sceneExists ? s.selectedSceneId : (frame.document.scenes[0]?.id ?? null),
         selectedElementId: null,
+        selectedElementIds: [],
+        historyCoalesceKey: null,
+        historyCoalesceAt: 0,
         saveStatus: 'unsaved' as SaveStatus,
       }
     })
@@ -505,6 +886,10 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
       future: restFuture,
       past: [...s.past, { document: cloneDoc(currentDoc) }],
       document: frame.document,
+      selectedElementId: null,
+      selectedElementIds: [],
+      historyCoalesceKey: null,
+      historyCoalesceAt: 0,
       saveStatus: 'unsaved' as SaveStatus,
     }))
   },
@@ -524,10 +909,14 @@ export function initEditorStore(
     document,
     selectedSceneId: document.scenes[0]?.id ?? null,
     selectedElementId: null,
+    selectedElementIds: [],
+    clipboard: [],
     zoom: 1,
     saveStatus: 'saved',
     past: [],
     future: [],
+    historyCoalesceKey: null,
+    historyCoalesceAt: 0,
     draftRevision: options?.revision ?? 0,
     isGuest: options?.isGuest ?? false,
     saveRequestNonce: 0,

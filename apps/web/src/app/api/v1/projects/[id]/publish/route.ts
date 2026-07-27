@@ -1,11 +1,12 @@
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
-import { ProjectDocumentSchema } from '@openwish/project-schema'
+import { safeMigrateDocument } from '@openwish/project-schema'
 import { requireAuth } from '@/lib/api/auth'
 import { created, serverError, unprocessable, notFound, conflict } from '@/lib/api/response'
 import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { fetchOwnedProject } from '@/lib/api/projects'
+import { runPublishPreflight } from '@/features/editor/utils/preflight'
 
 const RATE_LIMIT = { name: 'projects-publish', max: 60, windowSeconds: 3600 }
 
@@ -58,9 +59,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { data: project, error: projectError } = await fetchOwnedProject(supabase, user!.id, id)
   if (projectError || !project) return notFound('Kreasi tidak ditemukan.')
 
-  const validated = ProjectDocumentSchema.safeParse(project.draft_document)
+  const validated = safeMigrateDocument(project.draft_document)
   if (!validated.success) {
     return unprocessable('Dokumen tidak valid. Buka editor dan simpan ulang sebelum publikasi.')
+  }
+  const blockingIssue = runPublishPreflight(validated.data).find(
+    (issue) => issue.severity === 'error',
+  )
+  if (blockingIssue) {
+    return unprocessable(`Pemeriksaan publish gagal: ${blockingIssue.message}`)
   }
 
   const service = await createSupabaseServiceClient()

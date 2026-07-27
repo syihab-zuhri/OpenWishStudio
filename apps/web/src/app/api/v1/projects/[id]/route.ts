@@ -1,5 +1,5 @@
 import { type NextRequest } from 'next/server'
-import { ProjectDocumentSchema } from '@openwish/project-schema'
+import { safeMigrateDocument } from '@openwish/project-schema'
 import { requireAuth } from '@/lib/api/auth'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { ok, noContent, notFound, serverError, unprocessable, conflict } from '@/lib/api/response'
@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
   const { data: existing } = await fetchOwnedProject(supabase, user!.id, id)
   if (!existing) return notFound()
 
-  const parsed = ProjectDocumentSchema.safeParse(existing.draft_document)
+  const parsed = safeMigrateDocument(existing.draft_document)
   if (!parsed.success) {
     return unprocessable('Dokumen tidak valid. Buka editor dan simpan ulang terlebih dahulu.')
   }

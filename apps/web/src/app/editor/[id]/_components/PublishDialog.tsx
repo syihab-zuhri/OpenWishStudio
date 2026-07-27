@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import type { ProjectDocument } from '@openwish/project-schema'
+import { runPublishPreflight } from '@/features/editor/utils/preflight'
 
 interface PublishStatus {
   status: 'draft' | 'published' | 'unpublished'
@@ -18,6 +20,7 @@ interface PublishResult {
 
 interface Props {
   projectId: string
+  document: ProjectDocument
   onClose: () => void
 }
 
@@ -49,7 +52,7 @@ function formatDate(iso: string): string {
   })
 }
 
-export function PublishDialog({ projectId, onClose }: Props) {
+export function PublishDialog({ projectId, document, onClose }: Props) {
   const [status, setStatus] = useState<PublishStatus | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [expiry, setExpiry] = useState('')
@@ -58,6 +61,8 @@ export function PublishDialog({ projectId, onClose }: Props) {
   const [result, setResult] = useState<PublishResult | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const preflight = useMemo(() => runPublishPreflight(document), [document])
+  const preflightErrors = preflight.filter((item) => item.severity === 'error')
 
   useEffect(() => {
     fetch(`/api/v1/projects/${projectId}/publish-status`, {
@@ -199,6 +204,44 @@ export function PublishDialog({ projectId, onClose }: Props) {
 
           {status && (
             <>
+              <div
+                className={`rounded-md border p-3 ${
+                  preflightErrors.length
+                    ? 'border-error/35 bg-error-subtle'
+                    : 'border-border bg-background'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-text-primary text-xs font-semibold">
+                    Pemeriksaan sebelum publish
+                  </p>
+                  <span className="text-text-muted text-[10px] tabular-nums">
+                    {preflight.length === 0 ? 'Siap' : `${preflight.length} catatan`}
+                  </span>
+                </div>
+                {preflight.length === 0 ? (
+                  <p className="text-success mt-1 text-xs">Tidak ada masalah yang ditemukan.</p>
+                ) : (
+                  <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto">
+                    {preflight.map((item) => (
+                      <li
+                        key={item.id}
+                        className={`text-[11px] ${
+                          item.severity === 'error' ? 'text-error' : 'text-warning'
+                        }`}
+                      >
+                        <span className="font-medium">{item.sceneName}:</span> {item.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {preflightErrors.length > 0 && (
+                  <p className="text-error mt-2 text-[10px]">
+                    Perbaiki masalah berwarna merah sebelum melanjutkan.
+                  </p>
+                )}
+              </div>
+
               {/* Published link result */}
               {publishedUrl && (
                 <div className="border-success/25 bg-success-subtle space-y-2 rounded-md border p-4">
@@ -300,7 +343,7 @@ export function PublishDialog({ projectId, onClose }: Props) {
               <button
                 type="button"
                 onClick={handlePublish}
-                disabled={publishing}
+                disabled={publishing || preflightErrors.length > 0}
                 className="bg-primary text-text-on-primary hover:bg-primary-hover rounded-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.06em] transition-colors disabled:opacity-50"
               >
                 {publishing

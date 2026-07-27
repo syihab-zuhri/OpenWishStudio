@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { v4 as uuidv4 } from 'uuid'
 import {
   createDefaultDocument,
-  ProjectDocumentSchema,
+  safeMigrateDocument,
   type ProjectDocument,
 } from '@openwish/project-schema'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
@@ -41,7 +41,7 @@ export default function GuestEditorPage() {
 
       const draft = loadGuestDraft()
       if (draft) {
-        const parsed = ProjectDocumentSchema.safeParse(draft.document)
+        const parsed = safeMigrateDocument(draft.document)
         if (parsed.success) {
           setBoot({
             localProjectId: draft.localProjectId,

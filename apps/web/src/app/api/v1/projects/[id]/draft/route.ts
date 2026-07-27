@@ -75,6 +75,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
     .update({
       name,
       draft_document: JSON.parse(JSON.stringify(normalizedDocument)),
+      schema_version: document.schemaVersion,
       draft_revision: newRevision,
       last_saved_at: new Date().toISOString(),
     })
