@@ -97,7 +97,7 @@ describe('useAutosave', () => {
     expect(useEditorStore.getState().saveStatus).toBe('saved')
   })
 
-  it('sets saveStatus to "error" when 409 persists and resync also fails', async () => {
+  it('sets saveStatus to "error" on a revision conflict', async () => {
     mockFetch.mockImplementation(() => response(409))
     useEditorStore.getState().setSaveStatus('unsaved')
     renderHook(() => useAutosave())
@@ -106,7 +106,7 @@ describe('useAutosave', () => {
       await flushAsync()
     })
     expect(useEditorStore.getState().saveStatus).toBe('error')
-    expect(useEditorStore.getState().lastSaveError).toContain('sesi lain')
+    expect(useEditorStore.getState().lastSaveError).toContain('muat ulang')
   })
 
   it('sets saveStatus to "offline" on network TypeError', async () => {
@@ -220,38 +220,17 @@ describe('useAutosave', () => {
     expect(useEditorStore.getState().saveStatus).toBe('saved')
   })
 
-  it('auto-resyncs the revision after a 409 and retries the save', async () => {
-    let patchCount = 0
-    mockFetch.mockImplementation((_url: string, opts?: RequestInit) => {
-      if (opts?.method === 'PATCH') {
-        patchCount += 1
-        if (patchCount === 1) return response(409)
-        return ok200(8)
-      }
-      // GET /draft untuk resync revisi
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ document: null, revision: 7 }),
-      })
-    })
+  it('does not retry or overwrite automatically after a 409', async () => {
+    mockFetch.mockImplementation(() => response(409))
     useEditorStore.getState().setSaveStatus('unsaved')
     renderHook(() => useAutosave())
-    // Retry pasca-resync berjalan langsung (tanpa debounce) di rantai yang sama
     await act(async () => {
       vi.advanceTimersByTime(1500)
       await flushAsync(12)
     })
-    const patchCalls = mockFetch.mock.calls.filter(
-      (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
-    )
-    expect(patchCalls).toHaveLength(2)
-    const retryBody = JSON.parse((patchCalls[1][1] as RequestInit).body as string) as {
-      baseRevision: number
-    }
-    expect(retryBody.baseRevision).toBe(7)
-    expect(useEditorStore.getState().saveStatus).toBe('saved')
-    expect(useEditorStore.getState().draftRevision).toBe(8)
+    expect(mockFetch).toHaveBeenCalledOnce()
+    expect(useEditorStore.getState().saveStatus).toBe('error')
+    expect(useEditorStore.getState().draftRevision).toBe(0)
   })
 
   it('sends baseRevision from the store and updates it after a save', async () => {
@@ -265,8 +244,9 @@ describe('useAutosave', () => {
       await Promise.resolve()
     })
     const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit]
-    const body = JSON.parse(opts.body as string) as { baseRevision: number }
+    const body = JSON.parse(opts.body as string) as { baseRevision: number; name: string }
     expect(body.baseRevision).toBe(5)
+    expect(body.name).toBe('Test')
     expect(useEditorStore.getState().draftRevision).toBe(6)
   })
 

@@ -5,13 +5,10 @@ import { ok, notFound, serverError, unprocessable, conflict } from '@/lib/api/re
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 const CompleteSchema = z.object({
-  checksum: z.string().min(1).max(128).optional(),
+  checksum: z.string().regex(/^[a-f0-9]{64}$/),
 })
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { user, supabase, error } = await requireAuth()
   if (error) return error
@@ -84,11 +81,28 @@ export async function POST(
     return unprocessable('Ukuran file tidak sesuai dengan yang didaftarkan.')
   }
 
+  const { data: storedFile, error: downloadError } = await serviceClient.storage
+    .from('assets')
+    .download(asset.storage_key)
+  if (downloadError || !storedFile) {
+    console.error('POST /api/v1/assets/[id]/complete download:', downloadError?.message)
+    return serverError()
+  }
+
+  const digest = await crypto.subtle.digest('SHA-256', await storedFile.arrayBuffer())
+  const actualChecksum = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+  if (actualChecksum !== parsed.data.checksum) {
+    await serviceClient.storage.from('assets').remove([asset.storage_key])
+    return unprocessable('Checksum file tidak sesuai.')
+  }
+
   const { error: updateError } = await serviceClient
     .from('assets')
     .update({
       status: 'ready',
-      checksum_sha256: parsed.data.checksum ?? 'verified',
+      checksum_sha256: actualChecksum,
     })
     .eq('id', id)
     .eq('owner_id', user!.id)

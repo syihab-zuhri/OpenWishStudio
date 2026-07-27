@@ -2,10 +2,7 @@ import { requireAuth } from '@/lib/api/auth'
 import { ok, serverError, notFound } from '@/lib/api/response'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { user, supabase, error } = await requireAuth()
   if (error) return error
@@ -23,6 +20,13 @@ export async function GET(
   }
 
   const serviceClient = await createSupabaseServiceClient()
+  const { error: expiryError } = await serviceClient.rpc('expire_publications', {
+    p_owner_id: user!.id,
+  })
+  if (expiryError) {
+    console.error('GET /api/v1/projects/[id]/publish-status expiry:', expiryError.message)
+    return serverError()
+  }
 
   const { data: page, error: pageError } = await serviceClient
     .from('published_pages')

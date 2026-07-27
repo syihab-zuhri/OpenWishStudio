@@ -19,6 +19,7 @@ interface UseDragOptions {
   onCommit: (
     elementId: string,
     patch: { x?: number; y?: number; width?: number; height?: number },
+    before: { x: number; y: number; width: number; height: number },
   ) => void
 }
 
@@ -148,7 +149,12 @@ export function useDrag({ zoom, onCommit }: UseDragOptions) {
       }
 
       // Commit to history
-      onCommit(d.elementId, patch)
+      onCommit(d.elementId, patch, {
+        x: d.startX,
+        y: d.startY,
+        width: d.startW,
+        height: d.startH,
+      })
     },
     [zoom, onCommit],
   )

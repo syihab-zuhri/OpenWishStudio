@@ -7,7 +7,7 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from './document.schema'
 import { createDefaultDocument, createDefaultScene } from './factories'
-import { isCurrentVersion, isMigratable } from './migrations'
+import { isCurrentVersion, isMigratable, migrateDocument } from './migrations'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +58,11 @@ describe('ProjectDocumentSchema', () => {
     const doc = ProjectDocumentSchema.parse(createDefaultDocument())
     expect(Number.isInteger(doc.schemaVersion)).toBe(true)
     expect(doc.schemaVersion).toBeGreaterThanOrEqual(1)
+  })
+
+  it('rejects documents from a future schema version', () => {
+    const doc = { ...createDefaultDocument(), schemaVersion: CURRENT_SCHEMA_VERSION + 1 }
+    expect(ProjectDocumentSchema.safeParse(doc).success).toBe(false)
   })
 
   it('missing project.title throws ZodError', () => {
@@ -275,6 +280,16 @@ describe('migration helpers', () => {
 
   it('isMigratable returns false for version 0', () => {
     expect(isMigratable({ schemaVersion: 0 })).toBe(false)
+  })
+
+  it('migrateDocument validates the complete migrated document', () => {
+    const invalid = { ...createDefaultDocument(), scenes: [] }
+    expect(() => migrateDocument(invalid)).toThrow()
+  })
+
+  it('migrateDocument rejects future versions', () => {
+    const future = { ...createDefaultDocument(), schemaVersion: CURRENT_SCHEMA_VERSION + 1 }
+    expect(() => migrateDocument(future)).toThrow(/Unsupported schema version/)
   })
 
   it('CURRENT_SCHEMA_VERSION is a positive integer', () => {

@@ -5,6 +5,7 @@ import type { ProjectDocument, Scene, ElementNode, Soundtrack } from '@openwish/
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'offline'
+const MAX_HISTORY = 50
 
 interface HistoryFrame {
   document: ProjectDocument
@@ -60,14 +61,19 @@ interface EditorActions {
     sceneId: string,
     elementId: string,
     patch: Partial<Pick<ElementNode, 'x' | 'y' | 'width' | 'height'>>,
+    before?: Pick<ElementNode, 'x' | 'y' | 'width' | 'height'>,
   ) => void
   updateElementProps: (sceneId: string, elementId: string, props: Record<string, unknown>) => void
   deleteElement: (sceneId: string, elementId: string) => void
+  /** Hapus semua elemen gambar yang merujuk aset yang sudah dihapus. */
+  removeAssetReferences: (assetId: string) => void
   reorderElementZ: (
     sceneId: string,
     elementId: string,
     direction: 'up' | 'down' | 'front' | 'back',
   ) => void
+  /** Urutan ID dari paling depan ke paling belakang. */
+  reorderElements: (sceneId: string, orderedIdsFrontToBack: string[]) => void
   setZoom: (zoom: number) => void
   undo: () => void
   redo: () => void
@@ -93,7 +99,7 @@ function makeDefaultScene(order: number): Scene {
 
 function withPushedHistory(state: EditorState): Pick<EditorState, 'past' | 'future'> {
   const newPast = [...state.past, { document: cloneDoc(state.document) }]
-  if (newPast.length > 50) newPast.shift()
+  if (newPast.length > MAX_HISTORY) newPast.shift()
   return { past: newPast, future: [] }
 }
 
@@ -133,9 +139,13 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   // ── Project ─────────────────────────────────────────────────────────────────
 
   setProjectName(name) {
+    const normalizedName = name.trim().slice(0, 120) || 'Kreasi Tanpa Judul'
     set((s) => ({
-      projectName: name,
-      document: { ...s.document, project: { ...s.document.project, title: name } },
+      projectName: normalizedName,
+      document: {
+        ...s.document,
+        project: { ...s.document.project, title: normalizedName },
+      },
       saveStatus: 'unsaved' as SaveStatus,
     }))
   },
@@ -233,10 +243,11 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
   reorderScene(sceneId, toIndex) {
     set((s) => {
       const fromIdx = s.document.scenes.findIndex((sc) => sc.id === sceneId)
-      if (fromIdx === -1) return s
+      const boundedIndex = Math.max(0, Math.min(s.document.scenes.length - 1, toIndex))
+      if (fromIdx === -1 || fromIdx === boundedIndex) return s
       const newScenes = [...s.document.scenes]
       const [removed] = newScenes.splice(fromIdx, 1)
-      newScenes.splice(toIndex, 0, removed)
+      newScenes.splice(boundedIndex, 0, removed)
       return {
         ...withPushedHistory(s),
         document: { ...s.document, scenes: newScenes.map((sc, i) => ({ ...sc, order: i })) },
@@ -311,17 +322,28 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
     }))
   },
 
-  commitElementDrag(sceneId, elementId, patch) {
-    set((s) => ({
-      ...withPushedHistory(s),
-      document: mapScenes(s.document, sceneId, (sc) => ({
-        ...sc,
-        elements: sc.elements.map((el) =>
-          el.id === elementId ? ({ ...el, ...patch } as ElementNode) : el,
-        ),
-      })),
-      saveStatus: 'unsaved' as SaveStatus,
-    }))
+  commitElementDrag(sceneId, elementId, patch, before) {
+    set((s) => {
+      const beforeDocument = before
+        ? mapScenes(s.document, sceneId, (sc) => ({
+            ...sc,
+            elements: sc.elements.map((el) =>
+              el.id === elementId ? ({ ...el, ...before } as ElementNode) : el,
+            ),
+          }))
+        : s.document
+      return {
+        past: [...s.past, { document: cloneDoc(beforeDocument) }].slice(-MAX_HISTORY),
+        future: [],
+        document: mapScenes(s.document, sceneId, (sc) => ({
+          ...sc,
+          elements: sc.elements.map((el) =>
+            el.id === elementId ? ({ ...el, ...patch } as ElementNode) : el,
+          ),
+        })),
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
   },
 
   updateElementProps(sceneId, elementId, props) {
@@ -348,11 +370,56 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
     }))
   },
 
+  removeAssetReferences(assetId) {
+    set((s) => {
+      const removedIds = new Set<string>()
+      let changed = false
+      const scenes = s.document.scenes.map((sc) => {
+        const removeBackground = sc.background.type === 'image' && sc.background.assetId === assetId
+        if (removeBackground) changed = true
+        const elements = sc.elements.filter((el) => {
+          const remove = el.type === 'image' && el.props.assetId === assetId
+          if (remove) {
+            changed = true
+            removedIds.add(el.id)
+          }
+          return !remove
+        })
+        return {
+          ...sc,
+          background: removeBackground
+            ? ({ type: 'color', color: '#FFFDF8' } as const)
+            : sc.background,
+          elements,
+        }
+      })
+      const removeSoundtrack = s.document.project.soundtrack?.assetId === assetId
+      if (removeSoundtrack) changed = true
+      if (!changed) return s
+      return {
+        ...withPushedHistory(s),
+        document: {
+          ...s.document,
+          project: {
+            ...s.document.project,
+            soundtrack: removeSoundtrack ? undefined : s.document.project.soundtrack,
+          },
+          scenes,
+        },
+        selectedElementId:
+          s.selectedElementId && removedIds.has(s.selectedElementId) ? null : s.selectedElementId,
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
+  },
+
   reorderElementZ(sceneId, elementId, direction) {
     set((s) => ({
       ...withPushedHistory(s),
       document: mapScenes(s.document, sceneId, (sc) => {
-        const sorted = [...sc.elements].sort((a, b) => a.zIndex - b.zIndex)
+        // Salin elemen juga: jangan mutasi object dari state lama ketika
+        // menormalkan zIndex (history/undo bergantung pada immutability).
+        const sorted = sc.elements.map((el) => ({ ...el })).sort((a, b) => a.zIndex - b.zIndex)
         const idx = sorted.findIndex((el) => el.id === elementId)
         if (idx === -1) return sc
         if (direction === 'front') {
@@ -378,6 +445,30 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
       }),
       saveStatus: 'unsaved' as SaveStatus,
     }))
+  },
+
+  reorderElements(sceneId, orderedIdsFrontToBack) {
+    set((s) => {
+      const scene = s.document.scenes.find((item) => item.id === sceneId)
+      if (!scene || orderedIdsFrontToBack.length !== scene.elements.length) return s
+      if (new Set(orderedIdsFrontToBack).size !== scene.elements.length) return s
+      const currentIds = new Set(scene.elements.map((element) => element.id))
+      if (orderedIdsFrontToBack.some((id) => !currentIds.has(id))) return s
+
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, sceneId, (sc) => {
+          const count = orderedIdsFrontToBack.length
+          const zById = new Map(orderedIdsFrontToBack.map((id, i) => [id, count - i]))
+          return {
+            ...sc,
+            elements: sc.elements.map((el) => ({ ...el, zIndex: zById.get(el.id)! })),
+          }
+        }),
+        selectedElementId: s.selectedElementId,
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
   },
 
   // ── Canvas ──────────────────────────────────────────────────────────────────

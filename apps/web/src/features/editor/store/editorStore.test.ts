@@ -163,6 +163,24 @@ describe('commitElementDrag', () => {
     getState().commitElementDrag(sceneId, el.id, { x: 100, y: 200 })
     expect(getState().past.length).toBe(pastLen + 1)
   })
+
+  it('undo restores geometry from before the live drag', () => {
+    const sceneId = getState().document.scenes[0].id
+    const el = makeTextElement()
+    getState().addElement(sceneId, el)
+    getState().updateElement(sceneId, el.id, { x: 80, y: 90 })
+    getState().commitElementDrag(
+      sceneId,
+      el.id,
+      { x: 100, y: 110 },
+      { x: 10, y: 20, width: 200, height: 50 },
+    )
+
+    getState().undo()
+    const restored = getState().document.scenes[0].elements.find((element) => element.id === el.id)!
+    expect(restored.x).toBe(10)
+    expect(restored.y).toBe(20)
+  })
 })
 
 // ─── undo / redo ──────────────────────────────────────────────────────────────
@@ -284,5 +302,55 @@ describe('setSoundtrack', () => {
     expect(getState().document.project.soundtrack).toBeUndefined()
     getState().undo()
     expect(getState().document.project.soundtrack).toEqual(track)
+  })
+})
+
+describe('asset reference cleanup', () => {
+  it('removes image elements, image backgrounds, and soundtrack in one undoable change', () => {
+    const assetId = uuidv4()
+    const sceneId = getState().document.scenes[0].id
+    const image = {
+      id: uuidv4(),
+      type: 'image' as const,
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      rotation: 0,
+      zIndex: 1,
+      locked: false,
+      props: { assetId, alt: '', objectFit: 'cover' as const, decorative: true },
+    }
+    getState().addElement(sceneId, image)
+    getState().updateSceneBackground(sceneId, {
+      type: 'image',
+      assetId,
+      objectFit: 'cover',
+    })
+    getState().setSoundtrack({ assetId, volume: 1, loop: true })
+
+    getState().removeAssetReferences(assetId)
+    const state = getState()
+    expect(state.document.scenes[0].elements).toHaveLength(0)
+    expect(state.document.scenes[0].background.type).toBe('color')
+    expect(state.document.project.soundtrack).toBeUndefined()
+
+    state.undo()
+    expect(getState().document.project.soundtrack?.assetId).toBe(assetId)
+  })
+})
+
+describe('reorderElements', () => {
+  it('rejects duplicate or incomplete id lists without writing history', () => {
+    const sceneId = getState().document.scenes[0].id
+    const first = makeTextElement()
+    const second = makeTextElement({ zIndex: 1 })
+    getState().addElement(sceneId, first)
+    getState().addElement(sceneId, second)
+    const pastLength = getState().past.length
+
+    getState().reorderElements(sceneId, [first.id, first.id])
+    expect(getState().past.length).toBe(pastLength)
+    expect(getState().document.scenes[0].elements.find((el) => el.id === second.id)?.zIndex).toBe(1)
   })
 })

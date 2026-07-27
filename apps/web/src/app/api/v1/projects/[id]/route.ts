@@ -1,7 +1,8 @@
 import { type NextRequest } from 'next/server'
+import { ProjectDocumentSchema } from '@openwish/project-schema'
 import { requireAuth } from '@/lib/api/auth'
 import { fetchOwnedProject } from '@/lib/api/projects'
-import { ok, noContent, notFound, serverError, unprocessable } from '@/lib/api/response'
+import { ok, noContent, notFound, serverError, unprocessable, conflict } from '@/lib/api/response'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -13,7 +14,6 @@ export async function GET(_request: NextRequest, { params }: { params: Params })
 
   const { data: project } = await fetchOwnedProject(supabase, user!.id, id)
   if (!project) return notFound()
-
   return ok({ project })
 }
 
@@ -36,69 +36,51 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
   const { data: existing } = await fetchOwnedProject(supabase, user!.id, id)
   if (!existing) return notFound()
 
-  const { data: project, error: dbError } = await supabase
-    .from('projects')
-    .update({ name })
-    .eq('id', id)
-    .eq('owner_id', user!.id)
-    .select('id, name, status, updated_at, created_at')
-    .single()
-
-  if (dbError || !project) {
-    console.error('PATCH /api/v1/projects/[id]:', dbError?.message)
-    return serverError()
+  const parsed = ProjectDocumentSchema.safeParse(existing.draft_document)
+  if (!parsed.success) {
+    return unprocessable('Dokumen tidak valid. Buka editor dan simpan ulang terlebih dahulu.')
   }
 
+  const nextRevision = (existing.draft_revision ?? 0) + 1
+  const document = { ...parsed.data, project: { ...parsed.data.project, title: name } }
+  const service = await createSupabaseServiceClient()
+  const { data: project, error: updateError } = await service
+    .from('projects')
+    .update({
+      name,
+      draft_document: JSON.parse(JSON.stringify(document)),
+      draft_revision: nextRevision,
+      last_saved_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('owner_id', user!.id)
+    .eq('draft_revision', existing.draft_revision ?? 0)
+    .select('id, name, status, updated_at, created_at')
+    .maybeSingle()
+
+  if (updateError) {
+    console.error('PATCH /api/v1/projects/[id]:', updateError.message)
+    return serverError()
+  }
+  if (!project) return conflict('Versi proyek berubah. Muat ulang dashboard lalu coba lagi.')
   return ok({ project })
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Params }) {
   const { id } = await params
-  const { user, supabase, error } = await requireAuth()
+  const { user, error } = await requireAuth()
   if (error) return error
 
-  const { data: existing } = await fetchOwnedProject(supabase, user!.id, id)
-  if (!existing) return notFound()
-
-  // Soft delete lewat service client, bukan klien user: kebijakan SELECT
-  // (deleted_at IS NULL) ditegakkan Postgres terhadap baris HASIL update,
-  // sehingga baris yang baru di-soft-delete "tak terlihat" dan update-nya
-  // ditolak RLS (diverifikasi empiris via impersonasi SQL — bahkan tanpa
-  // RETURNING). Kepemilikan sudah diverifikasi fetchOwnedProject di atas.
-  const serviceClient = await createSupabaseServiceClient()
-
-  // Matikan halaman publik lebih dulu — tanpa ini, tautan yang sudah dibagikan
-  // tetap hidup sebagai halaman yatim setelah kreasinya dihapus.
-  const { error: unpubError } = await serviceClient
-    .from('published_pages')
-    .update({ status: 'unpublished' })
-    .eq('project_id', id)
-    .eq('status', 'published')
-
-  if (unpubError) {
-    console.error('DELETE /api/v1/projects/[id] unpublish:', unpubError.message)
-    return serverError()
-  }
-
-  const { error: dbError } = await serviceClient
-    .from('projects')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('owner_id', user!.id)
-
-  if (dbError) {
-    console.error('DELETE /api/v1/projects/[id]:', dbError.message)
-    return serverError()
-  }
-
-  await serviceClient.from('audit_logs').insert({
-    actor_id: user!.id,
-    created_by: user!.id,
-    action: 'project.delete',
-    target_type: 'project',
-    target_id: id,
-    metadata: { hadPublishedPage: existing.status === 'published' },
+  const service = await createSupabaseServiceClient()
+  const { error: deleteError } = await service.rpc('soft_delete_project_atomic', {
+    p_project_id: id,
+    p_actor_id: user!.id,
   })
 
+  if (deleteError) {
+    if (deleteError.code === 'P0002') return notFound()
+    console.error('DELETE /api/v1/projects/[id]:', deleteError.message)
+    return serverError()
+  }
   return noContent()
 }

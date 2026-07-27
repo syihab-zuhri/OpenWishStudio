@@ -1,8 +1,9 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient, createSupabaseServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProjectCardMenu } from './_components/ProjectActions'
 import { SceneThumbnail } from '@/features/viewer/components/SceneThumbnail'
+import type { Route } from 'next'
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()
@@ -16,22 +17,27 @@ export default async function DashboardPage() {
 
   // first_scene: hanya scene pertama yang diambil — bukan seluruh draft_document
   // (bisa sampai 5 MB per kreasi) — cukup untuk thumbnail kartu.
-  const { data: projects, error } = await supabase
-    .from('projects')
-    .select('id, name, status, updated_at, created_at, first_scene:draft_document->scenes->0')
-    .is('deleted_at', null)
-    .order('updated_at', { ascending: false })
-    .limit(50)
+  const service = await createSupabaseServiceClient()
+  const { error: expiryError } = await service.rpc('expire_publications', {
+    p_owner_id: user.id,
+  })
+  if (expiryError) console.error('Failed to expire publications:', expiryError.message)
+
+  const [projectsResult, profileResult] = await Promise.all([
+    supabase
+      .from('projects')
+      .select('id, name, status, updated_at, created_at, first_scene:draft_document->scenes->0')
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(50),
+    supabase.from('profiles').select('display_name, avatar_url, role').eq('id', user.id).single(),
+  ])
+  const { data: projects, error } = projectsResult
+  const { data: profile } = profileResult
 
   if (error) {
     console.error('Failed to load projects:', error.message)
   }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('display_name, avatar_url')
-    .eq('id', user.id)
-    .single()
 
   return (
     <div className="bg-background min-h-screen">
@@ -42,6 +48,11 @@ export default async function DashboardPage() {
             OpenWish Studio
           </span>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            {(profile?.role === 'moderator' || profile?.role === 'admin') && (
+              <Link href={'/admin/reports' as Route} className="text-primary text-xs font-medium">
+                Moderasi
+              </Link>
+            )}
             <span className="text-text-secondary min-w-0 truncate text-sm">
               {profile?.display_name ?? user.email}
             </span>

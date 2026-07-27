@@ -26,10 +26,6 @@ export function useAutosave() {
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inFlightRef = useRef(false)
-  // true selama retry pasca-resync — mencegah loop resync tak berujung dalam
-  // satu rentetan; di-reset di setiap hasil akhir supaya konflik berikutnya
-  // tetap bisa pulih sendiri (mis. dua perangkat aktif bergantian menyimpan).
-  const isResyncRetryRef = useRef(false)
   // Simpan manual menunggu dokumen terkini — susulkan tanpa debounce
   const chainImmediateRef = useRef(false)
   // Idempotency key draft tamu dipertahankan antar-save supaya impor tidak dobel
@@ -87,20 +83,6 @@ export function useAutosave() {
     reportManualResult(ok)
   }
 
-  /** Ambil revisi terbaru dari server setelah 409 (tab lain menyimpan duluan). */
-  async function resyncRevision(): Promise<boolean> {
-    try {
-      const res = await fetch(`/api/v1/projects/${projectId}/draft`)
-      if (!res.ok) return false
-      const json = (await res.json()) as { revision?: number }
-      if (typeof json.revision !== 'number') return false
-      setDraftRevision(json.revision)
-      return true
-    } catch {
-      return false
-    }
-  }
-
   /** Catat kegagalan: status, alasan untuk toast/badge, dan laporan manual. */
   function fail(status: 'error' | 'offline', message: string) {
     setSaveStatus(status)
@@ -115,10 +97,11 @@ export function useAutosave() {
 
     try {
       const baseRevision = useEditorStore.getState().draftRevision
+      const projectName = useEditorStore.getState().projectName
       const res = await fetch(`/api/v1/projects/${projectId}/draft`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document: doc, baseRevision }),
+        body: JSON.stringify({ document: doc, baseRevision, name: projectName }),
       })
 
       if (res.ok) {
@@ -126,7 +109,6 @@ export function useAutosave() {
         if (typeof json.revision === 'number') {
           setDraftRevision(json.revision)
         }
-        isResyncRetryRef.current = false
         const state = useEditorStore.getState()
         state.setLastSaveError(null)
         const docChanged = state.document !== doc
@@ -140,37 +122,28 @@ export function useAutosave() {
           reportManualResult(true)
         }
       } else if (res.status === 409) {
-        // Revisi server bergeser (sesi lain menyimpan duluan). Ambil revisi
-        // terbaru lalu langsung coba lagi (last-write-wins); kalau retry-nya
-        // masih konflik juga, menyerah untuk rentetan ini.
-        if (!isResyncRetryRef.current && (await resyncRevision())) {
-          isResyncRetryRef.current = true
-          setSaveStatus('unsaved')
-          chainImmediateRef.current = true
-        } else {
-          isResyncRetryRef.current = false
-          fail('error', 'Versi di server berubah — ada sesi lain yang menyimpan. Coba lagi.')
-        }
+        // Retry otomatis akan menimpa perubahan dari sesi lain. Biarkan
+        // pengguna memuat ulang dan menyelesaikan konflik secara sadar.
+        chainImmediateRef.current = false
+        fail('error', 'Versi di server berubah — muat ulang sebelum menyimpan kembali.')
       } else if (res.status === 401) {
-        isResyncRetryRef.current = false
         fail('error', 'Sesi berakhir. Muat ulang halaman lalu masuk kembali.')
       } else if (res.status === 0 || !res.status) {
-        isResyncRetryRef.current = false
         fail('offline', 'Tidak ada koneksi internet.')
       } else {
-        isResyncRetryRef.current = false
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         fail('error', body.error ?? `Gagal menyimpan (HTTP ${res.status}).`)
       }
     } catch (err) {
-      isResyncRetryRef.current = false
       const isOffline = err instanceof TypeError && err.message.includes('fetch')
       if (isOffline) fail('offline', 'Tidak ada koneksi internet.')
       else fail('error', 'Terjadi kesalahan tak terduga saat menyimpan.')
     } finally {
       inFlightRef.current = false
       const latest = useEditorStore.getState()
-      if (chainImmediateRef.current) {
+      if (latest.saveStatus === 'error') {
+        chainImmediateRef.current = false
+      } else if (chainImmediateRef.current) {
         chainImmediateRef.current = false
         void save(latest.document)
       } else if (latest.document !== doc) {

@@ -205,7 +205,7 @@ export const SoundtrackSchema = z.object({
 export const CURRENT_SCHEMA_VERSION = 1
 
 export const ProjectDocumentSchema = z.object({
-  schemaVersion: z.number().int().min(1),
+  schemaVersion: z.number().int().min(1).max(CURRENT_SCHEMA_VERSION),
   project: z.object({
     title: z.string().min(1).max(500),
     locale: z.string().max(35).default('id-ID'),

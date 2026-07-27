@@ -38,11 +38,15 @@ export async function POST(
 
   const { data: page } = await supabase
     .from('published_pages')
-    .select('id, status')
+    .select('id, status, expires_at')
     .eq('slug', slug)
     .maybeSingle()
 
-  if (!page || page.status !== 'published') {
+  if (
+    !page ||
+    page.status !== 'published' ||
+    (page.expires_at !== null && new Date(page.expires_at) <= new Date())
+  ) {
     return notFound('Halaman tidak tersedia.')
   }
 

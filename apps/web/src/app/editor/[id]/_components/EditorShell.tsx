@@ -12,14 +12,18 @@ import { useDrag } from '@/features/editor/hooks/useDrag'
 import { computeSnap } from '@/features/editor/utils/snapping'
 import { useAutosave } from '@/features/editor/hooks/useAutosave'
 import { PublishDialog } from './PublishDialog'
-import { TemplatePanel, AsetPanel, MusikPanel } from './EditorPanels'
+import dynamic from 'next/dynamic'
 
-type SidebarPanel = 'elemen' | 'template' | 'aset' | 'musik' | null
+const TemplatePanel = dynamic(() => import('./EditorPanels').then((module) => module.TemplatePanel))
+const AsetPanel = dynamic(() => import('./EditorPanels').then((module) => module.AsetPanel))
+const MusikPanel = dynamic(() => import('./EditorPanels').then((module) => module.MusikPanel))
+
+type SidebarPanel = 'elemen' | 'template' | 'aset' | 'musik' | 'layer' | null
 
 interface Props {
   projectId: string
   initialName: string
-  initialDocument: unknown
+  initialDocument: ProjectDocument
   initialRevision: number
   /** 'guest' = draft disimpan di perangkat, tanpa akun. */
   mode?: 'cloud' | 'guest'
@@ -34,7 +38,7 @@ export default function EditorShell({
 }: Props) {
   // Bootstrap store once on mount
   useEffect(() => {
-    initEditorStore(projectId, initialName, initialDocument as ProjectDocument, {
+    initEditorStore(projectId, initialName, initialDocument, {
       revision: initialRevision ?? 0,
       isGuest: mode === 'guest',
     })
@@ -59,6 +63,7 @@ function EditorLayout() {
   const canUndo = useEditorStore((s) => s.past.length > 0)
   const canRedo = useEditorStore((s) => s.future.length > 0)
   const hasSelectedElement = useEditorStore((s) => s.selectedElementId !== null)
+  const selectedElementId = useEditorStore((s) => s.selectedElementId)
   const [showPublish, setShowPublish] = useState(false)
   const [activePanel, setActivePanel] = useState<SidebarPanel>(null)
   const [showInspectorSheet, setShowInspectorSheet] = useState(false)
@@ -83,6 +88,15 @@ function EditorLayout() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [undo, redo])
+
+  // Saat elemen dipilih lewat kanvas atau panel Layer pada mobile, properti
+  // langsung terbuka. Desktop tetap memakai inspector kanan yang selalu ada.
+  useEffect(() => {
+    if (!selectedElementId) return
+    if (window.matchMedia('(min-width: 1024px)').matches) return
+    setActivePanel(null)
+    setShowInspectorSheet(true)
+  }, [selectedElementId])
 
   // Toast hasil simpan manual hilang sendiri: sukses 2,5 dtk, gagal 5 dtk
   useEffect(() => {
@@ -285,6 +299,12 @@ function EditorLayout() {
             active={activePanel === 'musik'}
             onClick={() => togglePanel('musik')}
           />
+          <SidebarIcon
+            label="Layer"
+            icon="☷"
+            active={activePanel === 'layer'}
+            onClick={() => togglePanel('layer')}
+          />
         </aside>
 
         {/* Slide-in panel — desktop */}
@@ -296,7 +316,14 @@ function EditorLayout() {
         <SceneNavigator />
 
         {/* Canvas workspace */}
-        <CanvasWorkspace />
+        <CanvasWorkspace
+          onElementSelect={() => {
+            if (!window.matchMedia('(min-width: 1024px)').matches) {
+              setActivePanel(null)
+              setShowInspectorSheet(true)
+            }
+          }}
+        />
 
         {/* Right inspector — desktop */}
         <InspectorPanel />
@@ -401,9 +428,18 @@ function SceneNavigator() {
   const addScene = useEditorStore((s) => s.addScene)
   const deleteScene = useEditorStore((s) => s.deleteScene)
   const duplicateScene = useEditorStore((s) => s.duplicateScene)
+  const reorderScene = useEditorStore((s) => s.reorderScene)
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
 
   const sorted = [...scenes].sort((a, b) => a.order - b.order)
   const THUMB_SCALE = 0.18
+
+  function finishDrop(index: number) {
+    if (draggedId) reorderScene(draggedId, index)
+    setDraggedId(null)
+    setDropIndex(null)
+  }
 
   return (
     <div className="border-border bg-surface hidden w-44 shrink-0 flex-col border-r lg:flex">
@@ -417,7 +453,29 @@ function SceneNavigator() {
         {sorted.map((scene, index) => {
           const isSelected = scene.id === selectedSceneId
           return (
-            <div key={scene.id} className="group relative">
+            <div
+              key={scene.id}
+              className={`group relative ${dropIndex === index ? 'border-primary border-t-2 pt-1' : ''}`}
+              draggable
+              onDragStart={(e) => {
+                setDraggedId(scene.id)
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('text/plain', scene.id)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                setDropIndex(index)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                finishDrop(index)
+              }}
+              onDragEnd={() => {
+                setDraggedId(null)
+                setDropIndex(null)
+              }}
+            >
               <button
                 type="button"
                 onClick={() => selectScene(scene.id)}
@@ -450,7 +508,10 @@ function SceneNavigator() {
                   >
                     {scene.name}
                   </p>
-                  <p className="text-text-muted text-[10px] tabular-nums">#{index + 1}</p>
+                  <p className="text-text-muted flex items-center justify-between text-[10px] tabular-nums">
+                    <span>#{index + 1}</span>
+                    <span aria-hidden="true">⠿</span>
+                  </p>
                 </div>
               </button>
               {/* Context actions on hover */}
@@ -516,7 +577,7 @@ function IconAction({
 
 // ─── Canvas workspace ─────────────────────────────────────────────────────────
 
-function CanvasWorkspace() {
+function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
   const scene = useEditorStore((s) => {
     const id = s.selectedSceneId
     return s.document.scenes.find((sc) => sc.id === id) ?? s.document.scenes[0]
@@ -566,10 +627,10 @@ function CanvasWorkspace() {
   const { startDrag, onPointerMove, onPointerUp, isDragging } = useDrag({
     zoom,
     onCommit: useCallback(
-      (elementId, patch) => {
+      (elementId, patch, before) => {
         if (selectedSceneId) {
           const snapped = applySnap(elementId, patch)
-          commitElementDrag(selectedSceneId, elementId, snapped.patch)
+          commitElementDrag(selectedSceneId, elementId, snapped.patch, before)
         }
         setActiveGuides(null)
       },
@@ -633,7 +694,10 @@ function CanvasWorkspace() {
                   scale={zoom}
                   selectedElementId={selectedElementId}
                   interactive
-                  onElementClick={(id) => selectElement(id)}
+                  onElementClick={(id) => {
+                    selectElement(id)
+                    onElementSelect()
+                  }}
                   onElementPointerDown={(elementId, e) => {
                     const el = scene.elements.find((el) => el.id === elementId)
                     if (!el) return
@@ -1357,6 +1421,7 @@ const PANEL_TITLES: Record<NonNullable<SidebarPanel>, string> = {
   template: 'Template',
   aset: 'Aset',
   musik: 'Musik',
+  layer: 'Layer',
 }
 
 function SidebarPanelContent({
@@ -1401,7 +1466,194 @@ function PanelBody({ panel }: { panel: NonNullable<SidebarPanel> }) {
   if (panel === 'elemen') return <ElemenPanel />
   if (panel === 'template') return <TemplatePanel />
   if (panel === 'aset') return <AsetPanel />
-  return <MusikPanel />
+  if (panel === 'musik') return <MusikPanel />
+  return <LayerPanel />
+}
+
+// ─── Layer panel ──────────────────────────────────────────────────────────────
+
+const ELEMENT_TYPE_LABELS: Record<ElementNode['type'], string> = {
+  text: 'Teks',
+  image: 'Gambar',
+  shape: 'Bentuk',
+  icon: 'Ikon',
+  button: 'Tombol',
+  audioControl: 'Audio',
+}
+
+function elementLayerName(element: ElementNode): string {
+  if (element.type === 'text') return element.props.content.trim().split('\n')[0] || 'Teks kosong'
+  if (element.type === 'image') return element.props.alt || 'Gambar'
+  if (element.type === 'button') return element.props.label || 'Tombol'
+  if (element.type === 'icon') return element.props.iconName
+  if (element.type === 'shape') return element.props.shape
+  return element.props.label ?? 'Kontrol audio'
+}
+
+/** Daftar layer dari depan ke belakang dengan drag-and-drop dan kontrol presisi. */
+function LayerPanel() {
+  const scene = useEditorStore((s) => s.document.scenes.find((sc) => sc.id === s.selectedSceneId))
+  const selectedElementId = useEditorStore((s) => s.selectedElementId)
+  const selectElement = useEditorStore((s) => s.selectElement)
+  const updateElement = useEditorStore((s) => s.updateElement)
+  const deleteElement = useEditorStore((s) => s.deleteElement)
+  const reorderElementZ = useEditorStore((s) => s.reorderElementZ)
+  const reorderElements = useEditorStore((s) => s.reorderElements)
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+
+  if (!scene) {
+    return <p className="text-text-muted py-8 text-center text-xs">Pilih scene terlebih dahulu.</p>
+  }
+
+  const sceneId = scene.id
+  const layers = [...scene.elements].sort((a, b) => b.zIndex - a.zIndex)
+
+  function finishDrop(index: number) {
+    if (!draggedId) return
+    const from = layers.findIndex((el) => el.id === draggedId)
+    if (from === -1 || from === index) {
+      setDraggedId(null)
+      setDropIndex(null)
+      return
+    }
+    const ids = layers.map((el) => el.id)
+    const [moved] = ids.splice(from, 1)
+    ids.splice(index, 0, moved)
+    reorderElements(sceneId, ids)
+    setDraggedId(null)
+    setDropIndex(null)
+  }
+
+  if (layers.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-10 text-center">
+        <span className="text-2xl" aria-hidden="true">
+          ☷
+        </span>
+        <p className="text-text-muted text-[11px]">Belum ada elemen pada scene ini.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <p className="text-text-muted mb-2 text-[10px]">
+        Urutan teratas tampil paling depan. Geser item atau gunakan tombol panah.
+      </p>
+      <div className="space-y-1.5">
+        {layers.map((element, index) => {
+          const selected = element.id === selectedElementId
+          return (
+            <div
+              key={element.id}
+              draggable
+              onDragStart={(e) => {
+                setDraggedId(element.id)
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('text/plain', element.id)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDropIndex(index)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                finishDrop(index)
+              }}
+              onDragEnd={() => {
+                setDraggedId(null)
+                setDropIndex(null)
+              }}
+              className={`rounded-md border p-2 transition-colors ${
+                dropIndex === index && draggedId
+                  ? 'border-secondary bg-warning-subtle'
+                  : selected
+                    ? 'border-primary bg-primary-subtle'
+                    : 'border-border bg-background'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => selectElement(element.id)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="text-text-primary block truncate text-xs font-medium">
+                    {elementLayerName(element)}
+                  </span>
+                  <span className="text-text-muted block text-[9px] uppercase tracking-[0.08em]">
+                    {ELEMENT_TYPE_LABELS[element.type]} · z{element.zIndex}
+                  </span>
+                </button>
+                <span
+                  className="text-text-muted cursor-grab text-sm"
+                  title="Geser layer"
+                  aria-hidden="true"
+                >
+                  ⠿
+                </span>
+              </div>
+              <div className="mt-1.5 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => reorderElementZ(sceneId, element.id, 'front')}
+                  className="border-border text-text-secondary hover:text-primary flex-1 rounded-sm border py-1 text-[10px]"
+                  title="Paling depan"
+                >
+                  ⤒
+                </button>
+                <button
+                  type="button"
+                  onClick={() => reorderElementZ(sceneId, element.id, 'up')}
+                  disabled={index === 0}
+                  className="border-border text-text-secondary hover:text-primary flex-1 rounded-sm border py-1 text-[10px] disabled:opacity-30"
+                  title="Naik satu layer"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => reorderElementZ(sceneId, element.id, 'down')}
+                  disabled={index === layers.length - 1}
+                  className="border-border text-text-secondary hover:text-primary flex-1 rounded-sm border py-1 text-[10px] disabled:opacity-30"
+                  title="Turun satu layer"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => reorderElementZ(sceneId, element.id, 'back')}
+                  className="border-border text-text-secondary hover:text-primary flex-1 rounded-sm border py-1 text-[10px]"
+                  title="Paling belakang"
+                >
+                  ⤓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateElement(sceneId, element.id, { locked: !element.locked })}
+                  className={`border-border flex-1 rounded-sm border py-1 text-[10px] ${
+                    element.locked ? 'text-warning' : 'text-text-secondary'
+                  }`}
+                  title={element.locked ? 'Buka kunci' : 'Kunci elemen'}
+                >
+                  {element.locked ? '🔒' : '🔓'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteElement(sceneId, element.id)}
+                  className="border-error/30 text-error hover:bg-error-subtle flex-1 rounded-sm border py-1 text-[10px]"
+                  title="Hapus elemen"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ─── Elemen panel ─────────────────────────────────────────────────────────────
@@ -1553,8 +1805,24 @@ function MobileSceneStrip() {
   const addScene = useEditorStore((s) => s.addScene)
   const deleteScene = useEditorStore((s) => s.deleteScene)
   const duplicateScene = useEditorStore((s) => s.duplicateScene)
+  const reorderScene = useEditorStore((s) => s.reorderScene)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const sorted = [...scenes].sort((a, b) => a.order - b.order)
+
+  function clearLongPress() {
+    if (longPressRef.current) clearTimeout(longPressRef.current)
+    longPressRef.current = null
+  }
+
+  function finishTouchDrop() {
+    if (draggingId && overIndex !== null) reorderScene(draggingId, overIndex)
+    setDraggingId(null)
+    setOverIndex(null)
+    clearLongPress()
+  }
 
   return (
     <div className="border-border bg-surface flex shrink-0 items-center gap-2 border-t px-3 py-2 lg:hidden">
@@ -1565,16 +1833,37 @@ function MobileSceneStrip() {
             <button
               key={scene.id}
               type="button"
-              onClick={() => selectScene(scene.id)}
-              aria-label={`Pilih ${scene.name}`}
+              onClick={() => {
+                if (!draggingId) selectScene(scene.id)
+              }}
+              onPointerDown={(e) => {
+                if (e.pointerType === 'mouse') return
+                clearLongPress()
+                longPressRef.current = setTimeout(() => {
+                  setDraggingId(scene.id)
+                  setOverIndex(index)
+                }, 350)
+              }}
+              onPointerEnter={() => {
+                if (draggingId) setOverIndex(index)
+              }}
+              onPointerUp={finishTouchDrop}
+              onPointerCancel={() => {
+                clearLongPress()
+                setDraggingId(null)
+                setOverIndex(null)
+              }}
+              aria-label={`Pilih ${scene.name}; tahan lalu geser untuk mengurutkan`}
               aria-pressed={isSelected}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs font-medium tabular-nums transition-colors ${
-                isSelected
-                  ? 'border-primary bg-primary-subtle text-primary'
-                  : 'border-border bg-background text-text-secondary'
+              className={`flex h-10 w-10 shrink-0 touch-none items-center justify-center rounded-md border text-xs font-medium tabular-nums transition-colors ${
+                overIndex === index && draggingId
+                  ? 'border-secondary bg-warning-subtle text-warning scale-110'
+                  : isSelected
+                    ? 'border-primary bg-primary-subtle text-primary'
+                    : 'border-border bg-background text-text-secondary'
               }`}
             >
-              {index + 1}
+              {draggingId === scene.id ? '⠿' : index + 1}
             </button>
           )
         })}
@@ -1601,6 +1890,31 @@ function MobileSceneStrip() {
               <path d="M6 3V2a1 1 0 011-1h6a1 1 0 011 1v7a1 1 0 01-1 1h-1" />
             </svg>
           </button>
+          <button
+            type="button"
+            aria-label="Geser scene ke kiri"
+            disabled={sorted.findIndex((sc) => sc.id === selectedSceneId) <= 0}
+            onClick={() => {
+              const index = sorted.findIndex((sc) => sc.id === selectedSceneId)
+              if (selectedSceneId && index > 0) reorderScene(selectedSceneId, index - 1)
+            }}
+            className="bg-surface-2 text-text-secondary hover:bg-surface-hover rounded-sm p-2 transition-colors disabled:opacity-30"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            aria-label="Geser scene ke kanan"
+            disabled={sorted.findIndex((sc) => sc.id === selectedSceneId) >= sorted.length - 1}
+            onClick={() => {
+              const index = sorted.findIndex((sc) => sc.id === selectedSceneId)
+              if (selectedSceneId && index < sorted.length - 1)
+                reorderScene(selectedSceneId, index + 1)
+            }}
+            className="bg-surface-2 text-text-secondary hover:bg-surface-hover rounded-sm p-2 transition-colors disabled:opacity-30"
+          >
+            →
+          </button>
           {scenes.length > 1 && (
             <button
               type="button"
@@ -1624,6 +1938,7 @@ const MOBILE_TOOLBAR_ITEMS: { key: NonNullable<SidebarPanel>; icon: string }[] =
   { key: 'template', icon: '⊞' },
   { key: 'aset', icon: '📁' },
   { key: 'musik', icon: '♪' },
+  { key: 'layer', icon: '☷' },
 ]
 
 /** Toolbar bawah untuk layar < lg — pengganti rail ikon kiri + akses inspector. */
@@ -1654,13 +1969,15 @@ function MobileToolbar({
           onClick={() => onTogglePanel(key)}
         />
       ))}
-      <MobileToolbarButton
-        label="Properti"
-        icon="⚙"
-        active={inspectorOpen}
-        onClick={onToggleInspector}
-        showDot={hasSelectedElement}
-      />
+      {hasSelectedElement && (
+        <MobileToolbarButton
+          label="Properti"
+          icon="⚙"
+          active={inspectorOpen}
+          onClick={onToggleInspector}
+          showDot
+        />
+      )}
     </nav>
   )
 }

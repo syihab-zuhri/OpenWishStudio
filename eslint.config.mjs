@@ -15,10 +15,14 @@ import nextPlugin from '@next/eslint-plugin-next'
 export default [
   ...base,
   {
+    // Keep the plugin declaration global. Next's build-time detector resolves
+    // the config file itself (not an app source file) under ESLint 9.
+    plugins: { '@next/next': nextPlugin },
+  },
+  {
     // Next.js rules only apply to the Next app; other packages have no `pages`
     // or `app` directory for them to reason about.
     files: ['apps/web/**/*.{ts,tsx}'],
-    plugins: { '@next/next': nextPlugin },
     settings: {
       // Without this the rule probes <repo-root>/pages and warns on every run,
       // because the Next app lives one level down in a workspace.

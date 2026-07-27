@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import EditorShell from './_components/EditorShell'
+import { ProjectDocumentSchema } from '@openwish/project-schema'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -29,11 +30,14 @@ export default async function EditorPage({ params }: Props) {
     notFound()
   }
 
+  const document = ProjectDocumentSchema.safeParse(project.draft_document)
+  if (!document.success) notFound()
+
   return (
     <EditorShell
       projectId={project.id}
       initialName={project.name}
-      initialDocument={project.draft_document}
+      initialDocument={document.data}
       initialRevision={project.draft_revision}
     />
   )

@@ -108,6 +108,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_PROJECT_ID=your-project-ref
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+CRON_SECRET=replace-with-a-long-random-secret
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` adalah secret server-side. Jangan menambahkan prefix `NEXT_PUBLIC_`, jangan membagikannya, dan jangan memasukkan `.env.local` ke Git.
@@ -127,6 +128,11 @@ Untuk menjalankan Supabase lokal:
 pnpm.cmd db:start
 pnpm.cmd db:reset
 ```
+
+`db:reset` menerapkan migrasi lalu mengisi template lokal secara deterministik
+melalui `supabase/seed/local_actor.sql` dan `supabase/seed/templates.sql`.
+Seed pustaka musik tidak dijalankan lokal karena objek audio binernya harus
+tersedia lebih dahulu di bucket `music-library`.
 
 Gunakan URL dan key yang ditampilkan oleh Supabase CLI untuk mengisi `apps/web/.env.local`.
 
@@ -205,6 +211,10 @@ Environment variables Production dikelola melalui Vercel, bukan melalui file yan
 vercel.cmd env ls production
 vercel.cmd env update NAMA_VARIABEL production
 ```
+
+Jadwalkan request harian `GET /api/v1/jobs/maintenance` dengan header
+`Authorization: Bearer <CRON_SECRET>`. Job ini menandai publikasi kedaluwarsa,
+membersihkan upload pending lebih dari 24 jam, dan memangkas counter rate-limit.
 
 Setelah mengubah environment variables, buat deployment baru agar nilainya diterapkan.
 

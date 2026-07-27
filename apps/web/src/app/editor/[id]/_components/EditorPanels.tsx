@@ -7,6 +7,7 @@ import { useEditorStore } from '@/features/editor/store/editorStore'
 
 const MAX_SCENES = 50
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
+const MAX_AUDIO_BYTES = 50 * 1024 * 1024
 
 // ─── Shared UI kecil ──────────────────────────────────────────────────────────
 
@@ -177,31 +178,91 @@ interface AssetItem {
   created_at: string
 }
 
-export function AsetPanel() {
-  const projectId = useEditorStore((s) => s.projectId)
-  const selectedSceneId = useEditorStore((s) => s.selectedSceneId)
-  const addElement = useEditorStore((s) => s.addElement)
+interface AssetPanelProps {
+  kind?: 'image' | 'audio'
+  projectId: string
+}
+
+/** Ambil aset project yang sudah siap dipakai. */
+function useProjectAssets({ kind = 'image', projectId }: AssetPanelProps) {
   const [items, setItems] = useState<AssetItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const loadAssets = useCallback(async () => {
-    if (!projectId) return
+  const load = useCallback(async () => {
+    if (!projectId) {
+      setItems([])
+      return
+    }
     try {
       const json = (await fetchJson(
-        `/api/v1/assets?projectId=${encodeURIComponent(projectId)}&kind=image&limit=50`,
+        `/api/v1/assets?projectId=${encodeURIComponent(projectId)}&kind=${kind}&limit=50`,
       )) as { items: AssetItem[] }
       setItems(json.items.filter((a) => a.status === 'ready'))
     } catch (e) {
       setItems([])
       setError(e instanceof Error ? e.message : 'Gagal memuat aset.')
     }
-  }, [projectId])
+  }, [kind, projectId])
 
   useEffect(() => {
-    void loadAssets()
-  }, [loadAssets])
+    void load()
+  }, [load])
+
+  return { items, setItems, error, setError, load }
+}
+
+/** Upload file melalui intent → signed PUT → complete. */
+async function uploadProjectAsset(projectId: string, file: File, kind: 'image' | 'audio') {
+  const [intent, digest] = await Promise.all([
+    fetchJson('/api/v1/assets/upload-intents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        fileName: file.name,
+        size: file.size,
+        mime: file.type,
+        kind,
+      }),
+    }) as Promise<{ assetId: string; uploadUrl: string }>,
+    crypto.subtle.digest('SHA-256', await file.arrayBuffer()),
+  ])
+  const checksum = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+
+  try {
+    const putRes = await fetch(intent.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    })
+    if (!putRes.ok) throw new Error('Unggahan ke penyimpanan gagal.')
+
+    await fetchJson(`/api/v1/assets/${intent.assetId}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checksum }),
+    })
+  } catch (error) {
+    await fetch(`/api/v1/assets/${intent.assetId}`, { method: 'DELETE' }).catch(() => undefined)
+    throw error
+  }
+}
+
+export function AsetPanel() {
+  const projectId = useEditorStore((s) => s.projectId)
+  const selectedSceneId = useEditorStore((s) => s.selectedSceneId)
+  const addElement = useEditorStore((s) => s.addElement)
+  const removeAssetReferences = useEditorStore((s) => s.removeAssetReferences)
+  const { items, setItems, error, setError, load } = useProjectAssets({
+    projectId,
+    kind: 'image',
+  })
+  const [uploading, setUploading] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<AssetItem | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleFile(file: File) {
     if (file.size > MAX_IMAGE_BYTES) {
@@ -211,37 +272,28 @@ export function AsetPanel() {
     setUploading(true)
     setError(null)
     try {
-      const intent = (await fetchJson('/api/v1/assets/upload-intents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          fileName: file.name,
-          size: file.size,
-          mime: file.type,
-          kind: 'image',
-        }),
-      })) as { assetId: string; uploadUrl: string }
-
-      const putRes = await fetch(intent.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      })
-      if (!putRes.ok) throw new Error('Unggahan ke penyimpanan gagal.')
-
-      await fetchJson(`/api/v1/assets/${intent.assetId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      })
-
-      await loadAssets()
+      await uploadProjectAsset(projectId, file, 'image')
+      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unggahan gagal.')
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function deleteAsset(asset: AssetItem) {
+    setDeletingId(asset.id)
+    setError(null)
+    try {
+      await fetchJson(`/api/v1/assets/${asset.id}`, { method: 'DELETE' })
+      removeAssetReferences(asset.id)
+      setItems((current) => current?.filter((item) => item.id !== asset.id) ?? [])
+      setConfirmDelete(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal menghapus gambar.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -290,6 +342,33 @@ export function AsetPanel() {
         />
       </label>
 
+      {confirmDelete && (
+        <div className="border-error/40 bg-error-subtle mb-3 rounded-md border p-3">
+          <p className="text-text-primary text-xs font-medium">Hapus gambar ini?</p>
+          <p className="text-text-muted mt-1 truncate text-[10px]">{confirmDelete.original_name}</p>
+          <p className="text-warning mt-1 text-[10px]">
+            File dan semua elemen gambar yang memakai aset ini akan dihapus dari kreasi.
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(null)}
+              className="text-text-secondary hover:bg-surface-hover rounded-sm px-2 py-1 text-[10px]"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => void deleteAsset(confirmDelete)}
+              disabled={deletingId === confirmDelete.id}
+              className="bg-error text-text-on-primary rounded-sm px-2.5 py-1 text-[10px] font-semibold disabled:opacity-50"
+            >
+              {deletingId === confirmDelete.id ? 'Menghapus…' : 'Ya, Hapus'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {items === null ? (
         <PanelSpinner />
       ) : items.length === 0 ? (
@@ -301,22 +380,37 @@ export function AsetPanel() {
           )}
           <div className="grid grid-cols-3 gap-2 lg:grid-cols-2">
             {items.map((asset) => (
-              <button
+              <div
                 key={asset.id}
-                type="button"
-                onClick={() => insertAsset(asset)}
-                disabled={!selectedSceneId}
-                title={`Sisipkan ${asset.original_name}`}
-                className="border-border hover:border-primary group relative aspect-square overflow-hidden rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                className="border-border hover:border-primary group relative aspect-square overflow-hidden rounded-md border transition-colors"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={asset.url}
-                  alt={asset.original_name}
-                  loading="lazy"
-                  className="h-full w-full object-cover"
-                />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => insertAsset(asset)}
+                  disabled={!selectedSceneId || deletingId === asset.id}
+                  title={`Sisipkan ${asset.original_name}`}
+                  className="h-full w-full disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={asset.url}
+                    alt={asset.original_name}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setConfirmDelete(asset)
+                  }}
+                  aria-label={`Hapus ${asset.original_name}`}
+                  className="bg-background/85 text-error hover:bg-error hover:text-text-on-primary absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-sm shadow-sm backdrop-blur-sm lg:h-6 lg:w-6"
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
         </>
@@ -345,13 +439,22 @@ function formatDuration(ms: number): string {
 }
 
 export function MusikPanel() {
+  const projectId = useEditorStore((s) => s.projectId)
+  const isGuest = useEditorStore((s) => s.isGuest)
   const soundtrack = useEditorStore((s) => s.document.project.soundtrack)
   const setSoundtrack = useEditorStore((s) => s.setSoundtrack)
   const [items, setItems] = useState<MusicItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const customInputRef = useRef<HTMLInputElement>(null)
   const previewRef = useRef<HTMLAudioElement | null>(null)
   const [volumePct, setVolumePct] = useState(() => Math.round((soundtrack?.volume ?? 1) * 100))
+  const customAssets = useProjectAssets({
+    projectId: isGuest ? '' : projectId,
+    kind: 'audio',
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -422,6 +525,65 @@ export function MusikPanel() {
     })
   }
 
+  function customAsMusic(asset: AssetItem): MusicItem {
+    return {
+      id: asset.id,
+      title: asset.original_name.replace(/\.[^.]+$/, ''),
+      artist: 'Musik Pribadi',
+      duration_ms: 0,
+      license_code: 'private',
+      attribution_text: null,
+      url: asset.url,
+    }
+  }
+
+  function applyCustom(asset: AssetItem) {
+    const item = customAsMusic(asset)
+    stopPreview()
+    setError(null)
+    setSoundtrack({
+      assetId: asset.id,
+      src: asset.url,
+      title: item.title,
+      volume: volumePct / 100,
+      loop: soundtrack?.loop ?? true,
+    })
+  }
+
+  async function handleCustomFile(file: File) {
+    if (file.size > MAX_AUDIO_BYTES) {
+      setError('Ukuran audio maksimal 50 MB.')
+      return
+    }
+    setUploading(true)
+    setError(null)
+    try {
+      await uploadProjectAsset(projectId, file, 'audio')
+      await customAssets.load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unggahan musik gagal.')
+    } finally {
+      setUploading(false)
+      if (customInputRef.current) customInputRef.current.value = ''
+    }
+  }
+
+  async function deleteCustom(asset: AssetItem) {
+    if (!window.confirm(`Hapus musik pribadi "${asset.original_name}"?`)) return
+    setDeletingId(asset.id)
+    setError(null)
+    try {
+      await fetchJson(`/api/v1/assets/${asset.id}`, { method: 'DELETE' })
+      customAssets.setItems((current) => current?.filter((item) => item.id !== asset.id) ?? [])
+      if (soundtrack?.assetId === asset.id) setSoundtrack(undefined)
+      if (previewId === asset.id) stopPreview()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal menghapus musik.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   function commitVolume(pct: number) {
     if (!soundtrack) return
     setSoundtrack({ ...soundtrack, volume: pct / 100 })
@@ -478,6 +640,98 @@ export function MusikPanel() {
           </label>
         </div>
       )}
+
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-text-muted text-[10px] font-semibold uppercase tracking-[0.08em]">
+          Musik Pribadi
+        </p>
+      </div>
+
+      {isGuest ? (
+        <div className="border-info/30 bg-info-subtle text-text-secondary mb-4 rounded-md border px-3 py-2 text-[11px]">
+          Masuk ke akun untuk mengunggah musik sendiri.
+        </div>
+      ) : (
+        <>
+          <label
+            className={`border-border-strong text-text-secondary hover:border-primary hover:text-primary mb-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-xs font-medium transition-colors ${
+              uploading ? 'pointer-events-none opacity-50' : ''
+            }`}
+          >
+            {uploading ? 'Mengunggah…' : '⬆ Unggah Musik'}
+            <input
+              ref={customInputRef}
+              type="file"
+              accept="audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/aac"
+              className="sr-only"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void handleCustomFile(file)
+              }}
+            />
+          </label>
+
+          {customAssets.error && <PanelError message={customAssets.error} />}
+          {customAssets.items === null ? (
+            <PanelSpinner />
+          ) : customAssets.items.length === 0 ? (
+            <p className="text-text-muted mb-4 text-center text-[10px]">Belum ada musik pribadi.</p>
+          ) : (
+            <div className="mb-4 space-y-1.5">
+              {customAssets.items.map((asset) => {
+                const item = customAsMusic(asset)
+                const isActive = soundtrack?.assetId === asset.id
+                const isPreviewing = previewId === asset.id
+                return (
+                  <div
+                    key={asset.id}
+                    className={`flex items-center gap-2 rounded-md border p-2 transition-colors ${
+                      isActive ? 'border-primary bg-primary-subtle' : 'border-border bg-background'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => togglePreview(item)}
+                      aria-label={
+                        isPreviewing ? `Hentikan ${item.title}` : `Dengarkan ${item.title}`
+                      }
+                      className="border-border-strong text-text-secondary hover:border-primary hover:text-primary flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs"
+                    >
+                      {isPreviewing ? '⏸' : '▶'}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-text-primary truncate text-xs font-medium">{item.title}</p>
+                      <p className="text-text-muted text-[10px]">Musik pribadi</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => applyCustom(asset)}
+                      disabled={isActive}
+                      className="bg-primary text-text-on-primary rounded-sm px-2 py-1.5 text-[10px] font-semibold disabled:opacity-60"
+                    >
+                      {isActive ? 'Terpasang' : 'Pakai'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteCustom(asset)}
+                      disabled={deletingId === asset.id}
+                      aria-label={`Hapus ${item.title}`}
+                      className="text-error hover:bg-error-subtle rounded-sm px-1.5 py-1 text-sm disabled:opacity-50"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      <p className="text-text-muted mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]">
+        Perpustakaan OpenWish
+      </p>
 
       {items === null ? (
         <PanelSpinner />

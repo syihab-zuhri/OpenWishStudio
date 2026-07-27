@@ -290,6 +290,7 @@ export type Database = {
           draft_document: Json
           draft_revision: number
           id: string
+          import_idempotency_key: string | null
           last_saved_at: string | null
           name: string
           owner_id: string
@@ -304,6 +305,7 @@ export type Database = {
           draft_document: Json
           draft_revision?: number
           id?: string
+          import_idempotency_key?: string | null
           last_saved_at?: string | null
           name: string
           owner_id: string
@@ -318,6 +320,7 @@ export type Database = {
           draft_document?: Json
           draft_revision?: number
           id?: string
+          import_idempotency_key?: string | null
           last_saved_at?: string | null
           name?: string
           owner_id?: string
@@ -524,6 +527,45 @@ export type Database = {
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      expire_publications: {
+        Args: { p_owner_id?: string | null }
+        Returns: number
+      }
+      disable_page_atomic: {
+        Args: { p_actor_id: string; p_page_id: string; p_reason: string }
+        Returns: string
+      }
+      cleanup_stale_pending_assets: {
+        Args: { p_older_than_seconds?: number }
+        Returns: { asset_id: string; object_key: string }[]
+      }
+      publish_project_atomic: {
+        Args: {
+          p_actor_id: string
+          p_content_hash: string
+          p_document: Json
+          p_expires_at: string | null
+          p_new_slug: string
+          p_project_id: string
+          p_schema_version: number
+        }
+        Returns: {
+          published_slug: string
+          published_version_no: number
+        }[]
+      }
+      restore_page_atomic: {
+        Args: { p_actor_id: string; p_page_id: string; p_reason: string }
+        Returns: string
+      }
+      soft_delete_project_atomic: {
+        Args: { p_actor_id: string; p_project_id: string }
+        Returns: boolean
+      }
+      unpublish_project_atomic: {
+        Args: { p_actor_id: string; p_project_id: string }
+        Returns: string
       }
       prune_rate_limits: {
         Args: { p_older_than_seconds?: number }

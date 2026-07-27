@@ -6,10 +6,7 @@ import { created, serverError, unprocessable, notFound, conflict } from '@/lib/a
 import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { fetchOwnedProject } from '@/lib/api/projects'
-import { v4 as uuidv4 } from 'uuid'
 
-// Every publish writes an immutable snapshot row, so this is unbounded growth
-// if left open.
 const RATE_LIMIT = { name: 'projects-publish', max: 60, windowSeconds: 3600 }
 
 const PublishSchema = z.object({
@@ -26,11 +23,12 @@ function generateSlug(): string {
 }
 
 async function computeContentHash(content: unknown): Promise<string> {
-  const text = JSON.stringify(content)
-  const buf = new TextEncoder().encode(text)
-  const hash = await crypto.subtle.digest('SHA-256', buf)
+  const hash = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(JSON.stringify(content)),
+  )
   return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0'))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
 }
 
@@ -50,28 +48,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const parsed = PublishSchema.safeParse(body)
-  if (!parsed.success) {
-    return unprocessable('Parameter tidak valid.')
-  }
+  if (!parsed.success) return unprocessable('Parameter tidak valid.')
 
   const { expiresAt } = parsed.data
-
-  if (expiresAt) {
-    const expiry = new Date(expiresAt)
-    if (expiry <= new Date()) {
-      return unprocessable('Pilih waktu kedaluwarsa di masa depan.')
-    }
+  if (expiresAt && new Date(expiresAt) <= new Date()) {
+    return unprocessable('Pilih waktu kedaluwarsa di masa depan.')
   }
 
-  const { data: project, error: projError } = await fetchOwnedProject(supabase, user!.id, id)
-  if (projError || !project) {
-    return notFound('Kreasi tidak ditemukan.')
+  const { data: project, error: projectError } = await fetchOwnedProject(supabase, user!.id, id)
+  if (projectError || !project) return notFound('Kreasi tidak ditemukan.')
+
+  const validated = ProjectDocumentSchema.safeParse(project.draft_document)
+  if (!validated.success) {
+    return unprocessable('Dokumen tidak valid. Buka editor dan simpan ulang sebelum publikasi.')
   }
 
-  const serviceClient = await createSupabaseServiceClient()
-
-  // Check for pending assets in project
-  const { data: pendingAssets } = await serviceClient
+  const service = await createSupabaseServiceClient()
+  const { data: pendingAssets, error: assetsError } = await service
     .from('assets')
     .select('id, original_name')
     .eq('project_id', id)
@@ -79,107 +72,47 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .is('deleted_at', null)
     .limit(10)
 
-  if (pendingAssets && pendingAssets.length > 0) {
+  if (assetsError) {
+    console.error('POST /api/v1/projects/[id]/publish asset check:', assetsError.message)
+    return serverError()
+  }
+  if (pendingAssets.length > 0) {
     return conflict(
-      'Beberapa aset masih dalam proses upload: ' +
-        pendingAssets.map((a) => a.original_name).join(', '),
+      `Beberapa aset masih dalam proses upload: ${pendingAssets.map((asset) => asset.original_name).join(', ')}`,
     )
   }
 
-  // Get existing published page for this project (to retain slug on republish)
-  const { data: currentPage } = await serviceClient
-    .from('published_pages')
-    .select('id, slug, current_version_id')
-    .eq('project_id', id)
-    .maybeSingle()
-
-  const slug = currentPage?.slug ?? generateSlug()
-  const versionId = uuidv4()
-
-  // Get next version number from existing versions
-  const { count: versionCount } = await serviceClient
-    .from('project_versions')
-    .select('id', { count: 'exact', head: true })
-    .eq('project_id', id)
-
-  const versionNo = (versionCount ?? 0) + 1
-
-  // Last gate before the document becomes publicly reachable. Drafts can predate
-  // the current schema (or have been written by an older, laxer route), so the
-  // snapshot is built from the parsed result rather than the raw column.
-  const validated = ProjectDocumentSchema.safeParse(project.draft_document)
-  if (!validated.success) {
-    return unprocessable('Dokumen tidak valid. Buka editor dan simpan ulang sebelum publikasi.')
-  }
-
   const contentHash = await computeContentHash(validated.data)
+  const { data: publication, error: publishError } = await service
+    .rpc('publish_project_atomic', {
+      p_project_id: id,
+      p_actor_id: user!.id,
+      p_document: validated.data as never,
+      p_schema_version: validated.data.schemaVersion,
+      p_content_hash: contentHash,
+      p_expires_at: expiresAt ?? null,
+      p_new_slug: generateSlug(),
+    })
+    .single()
 
-  // Insert immutable version snapshot
-  const { error: versionError } = await serviceClient.from('project_versions').insert({
-    id: versionId,
-    project_id: id,
-    version_no: versionNo,
-    document_snapshot: validated.data as never,
-    schema_version: project.schema_version ?? 1,
-    created_by: user!.id,
-    content_hash: contentHash,
-  })
-
-  if (versionError) {
-    console.error('POST /api/v1/projects/[id]/publish version insert:', versionError.message)
+  if (publishError || !publication) {
+    if (publishError?.code === '42501') {
+      return conflict('Halaman dinonaktifkan moderator dan tidak dapat diterbitkan ulang.')
+    }
+    if (publishError?.code === '55000') {
+      return conflict('Beberapa aset masih dalam proses upload.')
+    }
+    if (publishError?.code === 'P0002') return notFound('Kreasi tidak ditemukan.')
+    if (publishError?.code === '22007') return unprocessable('Waktu kedaluwarsa tidak valid.')
+    console.error('POST /api/v1/projects/[id]/publish:', publishError?.message)
     return serverError()
   }
 
-  const publishedAt = new Date().toISOString()
-
-  if (currentPage) {
-    const { error: updateError } = await serviceClient
-      .from('published_pages')
-      .update({
-        current_version_id: versionId,
-        status: 'published',
-        expires_at: expiresAt ?? null,
-        published_at: publishedAt,
-      })
-      .eq('id', currentPage.id)
-      .eq('project_id', id)
-
-    if (updateError) {
-      console.error('POST /api/v1/projects/[id]/publish page update:', updateError.message)
-      return serverError()
-    }
-  } else {
-    const { error: insertError } = await serviceClient.from('published_pages').insert({
-      project_id: id,
-      slug,
-      current_version_id: versionId,
-      status: 'published',
-      expires_at: expiresAt ?? null,
-      published_at: publishedAt,
-      created_by: user!.id,
-    })
-
-    if (insertError) {
-      console.error('POST /api/v1/projects/[id]/publish page insert:', insertError.message)
-      return serverError()
-    }
-  }
-
-  await serviceClient.from('audit_logs').insert({
-    actor_id: user!.id,
-    created_by: user!.id,
-    action: currentPage ? 'project.republish' : 'project.publish',
-    target_type: 'project',
-    target_id: id,
-    metadata: { slug, versionNo, expiresAt: expiresAt ?? null },
+  const slug = publication.published_slug
+  return created({
+    slug,
+    url: `/p/${slug}`,
+    versionNo: publication.published_version_no,
+    expiresAt: expiresAt ?? null,
   })
-
-  await serviceClient
-    .from('projects')
-    .update({ status: 'published' })
-    .eq('id', id)
-    .eq('owner_id', user!.id)
-
-  const url = `/p/${slug}`
-  return created({ slug, url, versionNo, expiresAt: expiresAt ?? null })
 }

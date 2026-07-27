@@ -4,7 +4,8 @@ import { requireAuth } from '@/lib/api/auth'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { created, notFound, serverError, unprocessable } from '@/lib/api/response'
 import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
-import type { ProjectDocument } from '@openwish/project-schema'
+import { ProjectDocumentSchema, type ProjectDocument } from '@openwish/project-schema'
+import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
 
@@ -13,11 +14,25 @@ const RATE_LIMIT = { name: 'projects-duplicate', max: 30, windowSeconds: 3600 }
 function cloneDocumentWithNewIds(doc: ProjectDocument, newTitle: string): ProjectDocument {
   return {
     ...doc,
-    project: { ...doc.project, title: newTitle },
+    project: {
+      ...doc.project,
+      title: newTitle,
+      soundtrack: doc.project.soundtrack
+        ? { ...doc.project.soundtrack, assetId: undefined }
+        : undefined,
+    },
     scenes: doc.scenes.map((scene) => ({
       ...scene,
       id: uuidv4(),
-      elements: scene.elements.map((el) => ({ ...el, id: uuidv4() })),
+      background:
+        scene.background.type === 'image'
+          ? { ...scene.background, assetId: undefined }
+          : scene.background,
+      elements: scene.elements.map((el) =>
+        el.type === 'image'
+          ? { ...el, id: uuidv4(), props: { ...el.props, assetId: undefined } }
+          : { ...el, id: uuidv4() },
+      ),
     })),
   }
 }
@@ -45,10 +60,14 @@ export async function POST(request: NextRequest, { params }: { params: Params })
     return unprocessable('Nama kreasi terlalu panjang (maks. 120 karakter).')
   }
 
-  const sourceDoc = source.draft_document as unknown as ProjectDocument
-  const clonedDoc = cloneDocumentWithNewIds(sourceDoc, name)
+  const sourceDoc = ProjectDocumentSchema.safeParse(source.draft_document)
+  if (!sourceDoc.success) {
+    return unprocessable('Dokumen sumber tidak valid. Buka dan simpan ulang terlebih dahulu.')
+  }
+  const clonedDoc = cloneDocumentWithNewIds(sourceDoc.data, name)
 
-  const { data: project, error: dbError } = await supabase
+  const service = await createSupabaseServiceClient()
+  const { data: project, error: dbError } = await service
     .from('projects')
     .insert({
       name,

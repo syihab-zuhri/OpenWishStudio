@@ -10,6 +10,7 @@ const VIEWER_MAX_WIDTH = 480
 interface Props {
   scenes: Scene[]
   audioEnabled: boolean
+  onAudioToggle?: () => void
 }
 
 /**
@@ -17,7 +18,7 @@ interface Props {
  * lebar container yang terukur (bukan konstanta) supaya scene tidak overflow
  * pada layar yang lebih sempit dari 480px.
  */
-export function SceneStack({ scenes, audioEnabled }: Props) {
+export function SceneStack({ scenes, audioEnabled, onAudioToggle }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState<number | null>(null)
 
@@ -41,7 +42,11 @@ export function SceneStack({ scenes, audioEnabled }: Props) {
           key={scene.id}
           aria-label={scene.name}
           className="overflow-hidden"
-          style={{ aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}` }}
+          style={{
+            aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}`,
+            contentVisibility: 'auto',
+            containIntrinsicSize: `${VIEWER_MAX_WIDTH}px ${(scene.baseHeight * VIEWER_MAX_WIDTH) / BASE_WIDTH}px`,
+          }}
         >
           {/* Render menunggu lebar terukur agar tidak flash pada ukuran salah */}
           {width !== null && (
@@ -50,6 +55,7 @@ export function SceneStack({ scenes, audioEnabled }: Props) {
               scale={scale}
               interactive={false}
               audioEnabled={audioEnabled}
+              onAudioToggle={onAudioToggle}
             />
           )}
         </section>

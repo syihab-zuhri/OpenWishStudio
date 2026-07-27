@@ -1,5 +1,8 @@
-import type { ProjectDocument } from './document.schema'
-import { CURRENT_SCHEMA_VERSION } from './document.schema'
+import {
+  CURRENT_SCHEMA_VERSION,
+  ProjectDocumentSchema,
+  type ProjectDocument,
+} from './document.schema'
 
 type Migration = (doc: Record<string, unknown>) => Record<string, unknown>
 
@@ -12,6 +15,14 @@ export function migrateDocument(raw: Record<string, unknown>): ProjectDocument {
   let doc = { ...raw }
   const startVersion = typeof doc.schemaVersion === 'number' ? doc.schemaVersion : 0
 
+  if (
+    !Number.isInteger(startVersion) ||
+    startVersion < 1 ||
+    startVersion > CURRENT_SCHEMA_VERSION
+  ) {
+    throw new Error(`Unsupported schema version ${String(doc.schemaVersion)}`)
+  }
+
   for (let v = startVersion; v < CURRENT_SCHEMA_VERSION; v++) {
     const migrate = migrations[v]
     if (!migrate) {
@@ -20,7 +31,7 @@ export function migrateDocument(raw: Record<string, unknown>): ProjectDocument {
     doc = migrate(doc)
   }
 
-  return doc as ProjectDocument
+  return ProjectDocumentSchema.parse(doc)
 }
 
 export function isCurrentVersion(doc: { schemaVersion: number }): boolean {

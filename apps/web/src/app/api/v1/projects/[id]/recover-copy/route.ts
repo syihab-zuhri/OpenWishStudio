@@ -4,6 +4,7 @@ import { fetchOwnedProject } from '@/lib/api/projects'
 import { created, notFound, serverError, unprocessable } from '@/lib/api/response'
 import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import { ProjectDocumentSchema } from '@openwish/project-schema'
+import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
 
@@ -37,13 +38,18 @@ export async function POST(request: NextRequest, { params }: { params: Params })
     return unprocessable('Nama kreasi terlalu panjang (maks. 120 karakter).')
   }
 
-  const { data: project, error: dbError } = await supabase
+  const recoveredDocument = {
+    ...parseResult.data,
+    project: { ...parseResult.data.project, title: name },
+  }
+  const service = await createSupabaseServiceClient()
+  const { data: project, error: dbError } = await service
     .from('projects')
     .insert({
       name,
       owner_id: user!.id,
       created_by: user!.id,
-      draft_document: JSON.parse(JSON.stringify(parseResult.data)),
+      draft_document: JSON.parse(JSON.stringify(recoveredDocument)),
       schema_version: parseResult.data.schemaVersion,
     })
     .select('id')

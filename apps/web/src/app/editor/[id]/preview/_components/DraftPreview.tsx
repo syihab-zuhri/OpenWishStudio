@@ -18,11 +18,7 @@ interface Props {
 export function DraftPreview({ projectId, projectName, document, backHref }: Props) {
   const soundtrack = document.project.soundtrack
   const [audioEnabled, setAudioEnabled] = useState(false)
-  const [showAudioPrompt, setShowAudioPrompt] = useState(
-    () =>
-      Boolean(soundtrack?.src) ||
-      document.scenes.some((sc) => sc.elements.some((el) => el.type === 'audioControl')),
-  )
+  const [showAudioPrompt, setShowAudioPrompt] = useState(() => Boolean(soundtrack?.src))
 
   const handleEnableAudio = useCallback(() => {
     setAudioEnabled(true)
@@ -32,6 +28,12 @@ export function DraftPreview({ projectId, projectName, document, backHref }: Pro
   const handleDismissAudio = useCallback(() => {
     setShowAudioPrompt(false)
   }, [])
+
+  const handleToggleAudio = useCallback(() => {
+    if (!soundtrack?.src) return
+    setShowAudioPrompt(false)
+    setAudioEnabled((enabled) => !enabled)
+  }, [soundtrack?.src])
 
   return (
     <div className="bg-canvas flex min-h-screen flex-col items-center">
@@ -102,7 +104,11 @@ export function DraftPreview({ projectId, projectName, document, backHref }: Pro
 
       {/* Scenes */}
       <main className="flex w-full flex-1 flex-col items-center">
-        <SceneStack scenes={document.scenes} audioEnabled={audioEnabled} />
+        <SceneStack
+          scenes={document.scenes}
+          audioEnabled={audioEnabled}
+          onAudioToggle={soundtrack?.src ? handleToggleAudio : undefined}
+        />
       </main>
 
       {soundtrack?.src && <SoundtrackPlayer soundtrack={soundtrack} enabled={audioEnabled} />}

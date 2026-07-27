@@ -4,13 +4,10 @@ import { requireModerator } from '@/lib/api/auth'
 import { ok, notFound, serverError, unprocessable } from '@/lib/api/response'
 
 const DisableSchema = z.object({
-  reason: z.string().min(1).max(2000),
+  reason: z.string().trim().min(1).max(2000),
 })
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { user, serviceClient, error } = await requireModerator()
   if (error) return error
@@ -23,42 +20,19 @@ export async function POST(
   }
 
   const parsed = DisableSchema.safeParse(body)
-  if (!parsed.success) {
-    return unprocessable('Alasan diperlukan.')
-  }
+  if (!parsed.success) return unprocessable('Alasan diperlukan.')
 
-  const { data: page } = await serviceClient!
-    .from('published_pages')
-    .select('id, status')
-    .eq('id', id)
-    .maybeSingle()
+  const { data: status, error: disableError } = await serviceClient!.rpc('disable_page_atomic', {
+    p_page_id: id,
+    p_actor_id: user!.id,
+    p_reason: parsed.data.reason,
+  })
 
-  if (!page) {
-    return notFound('Halaman tidak ditemukan.')
-  }
-
-  if (page.status === 'disabled') {
-    return ok({ status: 'disabled' })
-  }
-
-  const { error: updateError } = await serviceClient!
-    .from('published_pages')
-    .update({ status: 'disabled' })
-    .eq('id', id)
-
-  if (updateError) {
-    console.error('POST /api/v1/admin/pages/[id]/disable:', updateError.message)
+  if (disableError) {
+    if (disableError.code === 'P0002') return notFound('Halaman tidak ditemukan.')
+    console.error('POST /api/v1/admin/pages/[id]/disable:', disableError.message)
     return serverError()
   }
 
-  await serviceClient!.from('audit_logs').insert({
-    actor_id: user!.id,
-    created_by: user!.id,
-    action: 'page.disable',
-    target_type: 'published_page',
-    target_id: id,
-    metadata: { reason: parsed.data.reason },
-  })
-
-  return ok({ status: 'disabled' })
+  return ok({ status })
 }

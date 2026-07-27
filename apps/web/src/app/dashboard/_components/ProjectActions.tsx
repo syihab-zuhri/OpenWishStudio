@@ -174,7 +174,7 @@ function RenameDialog({
           setError('')
         }}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
-        maxLength={200}
+        maxLength={120}
         autoFocus
         className="border-border-strong bg-background text-text-primary focus:border-primary focus:ring-primary mt-1.5 w-full rounded-sm border px-3 py-2 text-sm outline-none focus:ring-1"
       />
@@ -236,7 +236,7 @@ function DuplicateDialog({
           setError('')
         }}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
-        maxLength={200}
+        maxLength={120}
         autoFocus
         className="border-border-strong bg-background text-text-primary focus:border-primary focus:ring-primary mt-1.5 w-full rounded-sm border px-3 py-2 text-sm outline-none focus:ring-1"
       />

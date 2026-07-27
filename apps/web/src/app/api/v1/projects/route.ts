@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/api/auth'
 import { ok, created, serverError, unprocessable, badRequest } from '@/lib/api/response'
 import { byUser, enforceRateLimit } from '@/lib/api/rate-limit'
 import { createDefaultDocument, ProjectDocumentSchema } from '@openwish/project-schema'
+import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
 
@@ -20,7 +21,9 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const cursor = searchParams.get('cursor')
-  const limit = Math.min(parseInt(searchParams.get('limit') ?? '24', 10), 50)
+  const requestedLimit = Number.parseInt(searchParams.get('limit') ?? '24', 10)
+  const limit =
+    Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 50) : 24
   const search = searchParams.get('q')?.trim() ?? ''
 
   let query = supabase
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { user, supabase, error } = await requireAuth()
+  const { user, error } = await requireAuth()
   if (error) return error
 
   const limited = await enforceRateLimit(RATE_LIMIT, byUser(user!.id))
@@ -87,6 +90,10 @@ export async function POST(request: NextRequest) {
     body = await request.json()
   } catch {
     body = {}
+  }
+
+  if (Buffer.byteLength(JSON.stringify(body), 'utf8') > MAX_DOCUMENT_BYTES) {
+    return unprocessable('Dokumen terlalu besar.')
   }
 
   const name = (body.name as string | undefined)?.trim() || 'Kreasi Baru'
@@ -107,7 +114,8 @@ export async function POST(request: NextRequest) {
     document = parsedDocument.data
   }
 
-  const { data: project, error: dbError } = await supabase
+  const service = await createSupabaseServiceClient()
+  const { data: project, error: dbError } = await service
     .from('projects')
     .insert({
       name,

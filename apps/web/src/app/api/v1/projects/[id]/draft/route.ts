@@ -3,8 +3,16 @@ import { requireAuth } from '@/lib/api/auth'
 import { fetchOwnedProject } from '@/lib/api/projects'
 import { ok, notFound, serverError, unprocessable, conflict } from '@/lib/api/response'
 import { ProjectDocumentSchema } from '@openwish/project-schema'
+import { z } from 'zod'
+import { createSupabaseServiceClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
+
+const SaveDraftSchema = z.object({
+  document: ProjectDocumentSchema,
+  baseRevision: z.number().int().nonnegative(),
+  name: z.string().trim().min(1).max(120),
+})
 
 export async function GET(_request: NextRequest, { params }: { params: Params }) {
   const { id } = await params
@@ -33,44 +41,58 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
     )
   }
 
-  let body: { document?: unknown; baseRevision?: unknown }
+  let body: unknown
   try {
     body = await request.json()
   } catch {
     return unprocessable('Request body tidak valid.')
   }
 
-  const parseResult = ProjectDocumentSchema.safeParse(body.document)
+  if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 5 * 1024 * 1024) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Kreasi terlalu besar. Hapus beberapa elemen/aset.' }),
+      { status: 413, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
+  const parseResult = SaveDraftSchema.safeParse(body)
   if (!parseResult.success) {
     return unprocessable('Ada elemen yang tidak valid.')
   }
 
-  const baseRevision = typeof body.baseRevision === 'number' ? body.baseRevision : null
-
   const { data: current } = await fetchOwnedProject(supabase, user!.id, id)
   if (!current) return notFound()
 
-  const currentRevision = current.draft_revision ?? 0
-
-  if (baseRevision !== null && baseRevision !== currentRevision) {
-    return conflict('Versi di server berubah. Pilih muat ulang atau simpan sebagai salinan.')
+  const { document, baseRevision, name } = parseResult.data
+  const normalizedDocument = {
+    ...document,
+    project: { ...document.project, title: name },
   }
-
-  const newRevision = currentRevision + 1
-
-  const { error: dbError } = await supabase
+  const newRevision = baseRevision + 1
+  const service = await createSupabaseServiceClient()
+  const { data: saved, error: dbError } = await service
     .from('projects')
     .update({
-      draft_document: JSON.parse(JSON.stringify(parseResult.data)),
+      name,
+      draft_document: JSON.parse(JSON.stringify(normalizedDocument)),
       draft_revision: newRevision,
+      last_saved_at: new Date().toISOString(),
     })
     .eq('id', id)
     .eq('owner_id', user!.id)
+    .is('deleted_at', null)
+    .eq('draft_revision', baseRevision)
+    .select('draft_revision, last_saved_at')
+    .maybeSingle()
 
   if (dbError) {
     console.error('PATCH /api/v1/projects/[id]/draft:', dbError.message)
     return serverError()
   }
 
-  return ok({ revision: newRevision, savedAt: new Date().toISOString() })
+  if (!saved) {
+    return conflict('Versi di server berubah. Muat ulang sebelum menyimpan perubahan Anda.')
+  }
+
+  return ok({ revision: saved.draft_revision, savedAt: saved.last_saved_at })
 }

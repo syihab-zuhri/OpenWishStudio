@@ -29,6 +29,7 @@ interface SceneRendererProps {
   scale?: number
   interactive?: boolean
   audioEnabled?: boolean
+  onAudioToggle?: () => void
   onElementClick?: (elementId: string) => void
   onElementPointerDown?: (elementId: string, e: React.PointerEvent) => void
   onHandlePointerDown?: (
@@ -44,6 +45,7 @@ export function SceneRenderer({
   scale = 1,
   interactive = false,
   audioEnabled = false,
+  onAudioToggle,
   onElementClick,
   onElementPointerDown,
   onHandlePointerDown,
@@ -66,6 +68,7 @@ export function SceneRenderer({
             selected={selectedElementId === el.id}
             interactive={interactive}
             audioEnabled={audioEnabled}
+            onAudioToggle={onAudioToggle}
             onClick={onElementClick}
             onPointerDown={onElementPointerDown}
             onHandlePointerDown={onHandlePointerDown}
@@ -108,6 +111,7 @@ interface ElementRendererProps {
   selected: boolean
   interactive: boolean
   audioEnabled: boolean
+  onAudioToggle?: () => void
   onClick?: (elementId: string) => void
   onPointerDown?: (elementId: string, e: React.PointerEvent) => void
   onHandlePointerDown?: (
@@ -123,6 +127,7 @@ function ElementRenderer({
   selected,
   interactive,
   audioEnabled,
+  onAudioToggle,
   onClick,
   onPointerDown,
   onHandlePointerDown,
@@ -135,7 +140,7 @@ function ElementRenderer({
     height: element.height * scale,
     transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
     zIndex: element.zIndex,
-    pointerEvents: interactive && !element.locked ? 'auto' : 'none',
+    pointerEvents: interactive ? (!element.locked ? 'auto' : 'none') : 'auto',
     cursor: interactive && !element.locked ? 'default' : undefined,
     // Sentuh: tanpa touch-action none, browser memilih scroll alih-alih drag
     touchAction: interactive && !element.locked ? 'none' : undefined,
@@ -164,7 +169,13 @@ function ElementRenderer({
       onClick={interactive ? handleClick : undefined}
       onPointerDown={interactive ? handlePointerDown : undefined}
     >
-      <ElementContent element={element} scale={scale} audioEnabled={audioEnabled} />
+      <ElementContent
+        element={element}
+        scale={scale}
+        audioEnabled={audioEnabled}
+        interactive={interactive}
+        onAudioToggle={onAudioToggle}
+      />
       {selected && (
         <SelectionHandles elementId={element.id} onHandlePointerDown={onHandlePointerDown} />
       )}
@@ -231,10 +242,14 @@ function ElementContent({
   element,
   scale,
   audioEnabled,
+  interactive,
+  onAudioToggle,
 }: {
   element: ElementNode
   scale: number
   audioEnabled: boolean
+  interactive: boolean
+  onAudioToggle?: () => void
 }) {
   switch (element.type) {
     case 'text':
@@ -318,6 +333,7 @@ function ElementContent({
           href={safeUrl(element.props.url)}
           target="_blank"
           rel="noopener noreferrer nofollow"
+          onClick={interactive ? (event) => event.preventDefault() : undefined}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -344,7 +360,20 @@ function ElementContent({
         <div
           className="flex items-center gap-2 rounded-full bg-white/90 shadow-[0_1px_3px_rgba(0,0,0,0.12)] backdrop-blur-sm"
           style={{ padding: `${4 * scale}px ${10 * scale}px` }}
-          role="group"
+          role={onAudioToggle ? 'button' : 'group'}
+          tabIndex={onAudioToggle ? 0 : undefined}
+          aria-pressed={onAudioToggle ? audioEnabled : undefined}
+          onClick={onAudioToggle}
+          onKeyDown={
+            onAudioToggle
+              ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onAudioToggle()
+                  }
+                }
+              : undefined
+          }
           aria-label={element.props.label ?? 'Audio control'}
         >
           <svg
