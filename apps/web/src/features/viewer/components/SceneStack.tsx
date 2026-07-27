@@ -5,13 +5,14 @@ import type { Scene, Theme } from '@openwish/project-schema'
 import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 
 const BASE_WIDTH = 390
-const VIEWER_MAX_WIDTH = 480
+const DEFAULT_MAX_WIDTH = 480
 
 interface Props {
   scenes: Scene[]
   theme?: Theme
   audioEnabled: boolean
   onAudioToggle?: () => void
+  maxWidth?: number
 }
 
 /**
@@ -19,7 +20,13 @@ interface Props {
  * lebar container yang terukur (bukan konstanta) supaya scene tidak overflow
  * pada layar yang lebih sempit dari 480px.
  */
-export function SceneStack({ scenes, theme, audioEnabled, onAudioToggle }: Props) {
+export function SceneStack({
+  scenes,
+  theme,
+  audioEnabled,
+  onAudioToggle,
+  maxWidth = DEFAULT_MAX_WIDTH,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState<number | null>(null)
 
@@ -37,7 +44,7 @@ export function SceneStack({ scenes, theme, audioEnabled, onAudioToggle }: Props
   const sorted = [...scenes].sort((a, b) => a.order - b.order)
 
   return (
-    <div ref={containerRef} className="w-full" style={{ maxWidth: VIEWER_MAX_WIDTH }}>
+    <div ref={containerRef} className="w-full" style={{ maxWidth }}>
       {sorted.map((scene) => (
         <section
           key={scene.id}
@@ -46,7 +53,7 @@ export function SceneStack({ scenes, theme, audioEnabled, onAudioToggle }: Props
           style={{
             aspectRatio: `${BASE_WIDTH} / ${scene.baseHeight}`,
             contentVisibility: 'auto',
-            containIntrinsicSize: `${VIEWER_MAX_WIDTH}px ${(scene.baseHeight * VIEWER_MAX_WIDTH) / BASE_WIDTH}px`,
+            containIntrinsicSize: `${maxWidth}px ${(scene.baseHeight * maxWidth) / BASE_WIDTH}px`,
           }}
         >
           {/* Render menunggu lebar terukur agar tidak flash pada ukuran salah */}

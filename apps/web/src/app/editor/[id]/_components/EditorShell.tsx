@@ -2266,14 +2266,54 @@ function SceneInspector({
 
 // ─── Inspector helpers ────────────────────────────────────────────────────────
 
+const COLLAPSED_INSPECTOR_DEFAULTS = new Set(['Efek', 'Urutan Lapisan', 'Tema Kreasi'])
+
 function InspectorSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const storageKey = `openwish:inspector:${title}`
+  const [open, setOpen] = useState(() => !COLLAPSED_INSPECTOR_DEFAULTS.has(title))
+  const hydrated = useRef(false)
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(storageKey)
+      if (stored !== null) setOpen(stored === 'open')
+    } catch {
+      // Storage dapat diblokir browser; accordion tetap berfungsi selama sesi.
+    } finally {
+      hydrated.current = true
+    }
+  }, [storageKey])
+
   return (
-    <div className="px-4 py-3">
-      <p className="text-text-muted mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]">
-        {title}
-      </p>
-      {children}
-    </div>
+    <details
+      open={open}
+      onToggle={(event) => {
+        const nextOpen = event.currentTarget.open
+        setOpen(nextOpen)
+        if (!hydrated.current) return
+        try {
+          window.localStorage.setItem(storageKey, nextOpen ? 'open' : 'closed')
+        } catch {
+          // Preferensi tidak persisten jika storage tidak tersedia.
+        }
+      }}
+      className="group"
+    >
+      <summary className="text-text-muted hover:bg-surface-hover focus-visible:ring-primary flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
+        <span>{title}</span>
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.8}
+          className={`h-4 w-4 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
+        </svg>
+      </summary>
+      <div className="px-4 pb-4 pt-1">{children}</div>
+    </details>
   )
 }
 

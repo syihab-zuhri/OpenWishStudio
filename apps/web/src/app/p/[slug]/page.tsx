@@ -63,5 +63,5 @@ export default async function PublicPage({ params }: Props) {
 
   if (!data) notFound()
 
-  return <PublicViewer slug={slug} document={data.document} expiresAt={data.expiresAt} />
+  return <PublicViewer document={data.document} />
 }
