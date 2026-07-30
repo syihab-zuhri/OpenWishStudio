@@ -33,6 +33,19 @@ const SmartStartDialog = dynamic(() =>
 )
 
 type SidebarPanel = 'elemen' | 'template' | 'aset' | 'musik' | 'layer' | null
+type MobileSheetSnap = 'collapsed' | 'half' | 'expanded'
+
+const MOBILE_SHEET_INSETS: Record<MobileSheetSnap, string> = {
+  collapsed: 'calc(3.5rem + env(safe-area-inset-bottom))',
+  half: '42dvh',
+  expanded: '82dvh',
+}
+
+const MOBILE_SHEET_HEIGHT_CLASSES: Record<MobileSheetSnap, string> = {
+  collapsed: 'h-[calc(3.5rem+env(safe-area-inset-bottom))]',
+  half: 'h-[42dvh]',
+  expanded: 'h-[82dvh]',
+}
 
 interface Props {
   projectId: string
@@ -86,6 +99,7 @@ function EditorLayout() {
   const [showSmartStart, setShowSmartStart] = useState(false)
   const [activePanel, setActivePanel] = useState<SidebarPanel>(null)
   const [showInspectorSheet, setShowInspectorSheet] = useState(false)
+  const [mobileSheetSnap, setMobileSheetSnap] = useState<MobileSheetSnap>('half')
   const smartStartChecked = useRef(false)
 
   useAutosave()
@@ -109,6 +123,17 @@ function EditorLayout() {
     const openSmartStart = () => setShowSmartStart(true)
     window.addEventListener('openwish:open-smart-start', openSmartStart)
     return () => window.removeEventListener('openwish:open-smart-start', openSmartStart)
+  }, [])
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('openwish:mobile-sheet-snap')
+      if (stored === 'collapsed' || stored === 'half' || stored === 'expanded') {
+        setMobileSheetSnap(stored)
+      }
+    } catch {
+      // Sheet tetap memakai tinggi default jika storage browser diblokir.
+    }
   }, [])
 
   function dismissSmartStart() {
@@ -214,6 +239,17 @@ function EditorLayout() {
     setActivePanel(null)
     setShowInspectorSheet((v) => !v)
   }
+
+  function changeMobileSheetSnap(nextSnap: MobileSheetSnap) {
+    setMobileSheetSnap(nextSnap)
+    try {
+      window.localStorage.setItem('openwish:mobile-sheet-snap', nextSnap)
+    } catch {
+      // Preferensi tetap berlaku selama editor terbuka.
+    }
+  }
+
+  const mobileSheetOpen = Boolean(activePanel || showInspectorSheet)
 
   return (
     <div className="bg-background flex h-dvh flex-col">
@@ -439,6 +475,8 @@ function EditorLayout() {
 
         {/* Canvas workspace */}
         <CanvasWorkspace
+          mobileSheetOpen={mobileSheetOpen}
+          mobileSheetSnap={mobileSheetSnap}
           onElementSelect={() => {
             if (!window.matchMedia('(min-width: 1024px)').matches) {
               setActivePanel(null)
@@ -463,14 +501,24 @@ function EditorLayout() {
 
       {/* Mobile bottom sheets */}
       {activePanel && (
-        <MobileSheet title={PANEL_TITLES[activePanel]} onClose={() => setActivePanel(null)}>
+        <MobileSheet
+          title={PANEL_TITLES[activePanel]}
+          snap={mobileSheetSnap}
+          onSnapChange={changeMobileSheetSnap}
+          onClose={() => setActivePanel(null)}
+        >
           <div className="p-3">
             <PanelBody panel={activePanel} />
           </div>
         </MobileSheet>
       )}
       {showInspectorSheet && !activePanel && (
-        <MobileSheet title="Properti" onClose={() => setShowInspectorSheet(false)}>
+        <MobileSheet
+          title="Properti"
+          snap={mobileSheetSnap}
+          onSnapChange={changeMobileSheetSnap}
+          onClose={() => setShowInspectorSheet(false)}
+        >
           <InspectorBody />
         </MobileSheet>
       )}
@@ -699,7 +747,15 @@ function IconAction({
 
 // ─── Canvas workspace ─────────────────────────────────────────────────────────
 
-function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
+function CanvasWorkspace({
+  onElementSelect,
+  mobileSheetOpen,
+  mobileSheetSnap,
+}: {
+  onElementSelect: () => void
+  mobileSheetOpen: boolean
+  mobileSheetSnap: MobileSheetSnap
+}) {
   const scene = useEditorStore((s) => {
     const id = s.selectedSceneId
     return s.document.scenes.find((sc) => sc.id === id) ?? s.document.scenes[0]
@@ -797,7 +853,53 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
+  const focusSelectedElement = useCallback(
+    (requestedBehavior: ScrollBehavior = 'smooth') => {
+      if (!selectedElementId || window.matchMedia('(min-width: 1024px)').matches) return
+      const scrollContainer = scrollRef.current
+      const frame = sceneFrameRef.current
+      if (!scrollContainer || !frame) return
+      const selectedNode = Array.from(
+        frame.querySelectorAll<HTMLElement>('[data-element-id]'),
+      ).find((node) => node.dataset.elementId === selectedElementId)
+      if (!selectedNode) return
+
+      const scrollRect = scrollContainer.getBoundingClientRect()
+      const elementRect = selectedNode.getBoundingClientRect()
+      const sheetRect = mobileSheetOpen
+        ? document.querySelector<HTMLElement>('[data-mobile-editor-sheet]')?.getBoundingClientRect()
+        : null
+      const visibleTop = scrollRect.top + 20
+      const visibleBottom = Math.min(scrollRect.bottom - 20, (sheetRect?.top ?? Infinity) - 20)
+      if (visibleBottom <= visibleTop) return
+
+      let delta = 0
+      if (elementRect.height > visibleBottom - visibleTop) {
+        delta =
+          elementRect.top + elementRect.height / 2 - (visibleTop + (visibleBottom - visibleTop) / 2)
+      } else if (elementRect.bottom > visibleBottom) {
+        delta = elementRect.bottom - visibleBottom
+      } else if (elementRect.top < visibleTop) {
+        delta = elementRect.top - visibleTop
+      }
+      if (Math.abs(delta) < 1) return
+
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : requestedBehavior
+      scrollContainer.scrollBy({ top: delta, behavior })
+    },
+    [mobileSheetOpen, selectedElementId],
+  )
+
+  useEffect(() => {
+    if (!mobileSheetOpen || !selectedElementId) return
+    const timeout = window.setTimeout(() => focusSelectedElement(), 220)
+    return () => window.clearTimeout(timeout)
+  }, [focusSelectedElement, mobileSheetOpen, mobileSheetSnap, selectedElementId])
+
   const zoomPct = Math.round(zoom * 100)
+  const mobileSheetInset = mobileSheetOpen ? MOBILE_SHEET_INSETS[mobileSheetSnap] : '0px'
 
   function pointerInScene(event: React.PointerEvent) {
     const rect = sceneFrameRef.current?.getBoundingClientRect()
@@ -834,10 +936,13 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
   }
 
   return (
-    <main className="bg-canvas bg-spotlight relative min-w-0 flex-1 overflow-hidden">
+    <main
+      className="bg-canvas bg-spotlight relative min-w-0 flex-1 overflow-hidden lg:[--mobile-sheet-inset:0px]"
+      style={{ '--mobile-sheet-inset': mobileSheetInset } as React.CSSProperties}
+    >
       <div
         ref={scrollRef}
-        className="absolute inset-0 overflow-auto overscroll-contain"
+        className="absolute inset-0 scroll-pb-[var(--mobile-sheet-inset)] overflow-auto overscroll-contain lg:scroll-pb-0"
         onClick={() => {
           if (justMarqueedRef.current) {
             justMarqueedRef.current = false
@@ -865,7 +970,7 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
         }}
       >
         {/* m-auto: tetap center saat muat, dan bisa discroll penuh saat overflow */}
-        <div className="flex min-h-full min-w-full">
+        <div className="flex min-h-full min-w-full pb-[var(--mobile-sheet-inset)] transition-[padding] duration-200 motion-reduce:transition-none lg:pb-0">
           <div className="m-auto shrink-0 p-4 sm:p-8">
             {scene ? (
               <div
@@ -994,7 +1099,30 @@ function CanvasWorkspace({ onElementSelect }: { onElementSelect: () => void }) {
 
       {/* Zoom toolbar — di luar area scroll supaya selalu terlihat */}
       <SelectionToolbar />
-      <div className="bg-surface-2 absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-1 shadow-md">
+      {selectedElementId && (
+        <button
+          type="button"
+          onClick={() => focusSelectedElement()}
+          className="border-border-strong bg-surface-2 text-text-secondary hover:border-primary hover:text-primary absolute right-3 top-3 z-10 flex min-h-11 items-center gap-2 rounded-md border px-3 text-xs font-semibold shadow-md transition-colors lg:hidden"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.7"
+              d="M7 3H3v4M13 3h4v4M7 17H3v-4M13 17h4v-4M7 10h6"
+            />
+          </svg>
+          Fokus elemen
+        </button>
+      )}
+      <div className="bg-surface-2 absolute bottom-[calc(var(--mobile-sheet-inset)+1rem)] left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-1 shadow-md transition-[bottom] duration-200 motion-reduce:transition-none lg:bottom-4">
         <button
           type="button"
           aria-label="Zoom out"
@@ -1130,14 +1258,15 @@ function InspectorPanel() {
   })
 
   return (
-    <aside className="border-border bg-surface hidden w-72 shrink-0 overflow-y-auto border-l lg:block">
-      <div className="border-border border-b px-4 py-3">
+    <aside className="border-border bg-surface hidden min-h-0 w-72 shrink-0 flex-col overflow-hidden border-l lg:flex">
+      <div className="border-border shrink-0 border-b px-4 py-3">
         <span className="text-text-muted text-[10px] font-medium uppercase tracking-[0.08em]">
           {title}
         </span>
       </div>
-
-      <InspectorBody />
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <InspectorBody />
+      </div>
     </aside>
   )
 }
@@ -3552,38 +3681,113 @@ function MobileToolbarButton({
 /** Bottom sheet untuk panel & inspector di layar < lg. */
 function MobileSheet({
   title,
+  snap,
+  onSnapChange,
   onClose,
   children,
 }: {
   title: string
+  snap: MobileSheetSnap
+  onSnapChange: (snap: MobileSheetSnap) => void
   onClose: () => void
   children: React.ReactNode
 }) {
+  const snapLabel =
+    snap === 'collapsed' ? 'Dikecilkan' : snap === 'expanded' ? 'Layar penuh' : 'Setengah layar'
+
+  function shrink() {
+    if (snap === 'expanded') onSnapChange('half')
+    else if (snap === 'half') onSnapChange('collapsed')
+  }
+
+  function grow() {
+    if (snap === 'collapsed') onSnapChange('half')
+    else if (snap === 'half') onSnapChange('expanded')
+  }
+
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
-      <div className="border-border bg-surface flex max-h-[55dvh] flex-col rounded-t-lg border-t shadow-xl">
-        <div className="border-border flex h-11 shrink-0 items-center justify-between border-b px-4">
-          <span className="text-text-secondary text-[11px] font-semibold uppercase tracking-[0.08em]">
-            {title}
+      <div
+        role="complementary"
+        aria-label={`Panel ${title}`}
+        data-mobile-editor-sheet
+        className={`border-border bg-surface flex max-h-[calc(100dvh-3rem)] flex-col rounded-t-lg border-t shadow-xl transition-[height] duration-200 motion-reduce:transition-none ${MOBILE_SHEET_HEIGHT_CLASSES[snap]}`}
+      >
+        <div className="border-border relative flex min-h-14 shrink-0 items-center justify-between border-b pl-4 pr-1">
+          <span
+            className="bg-border-strong absolute left-1/2 top-1 h-1 w-10 -translate-x-1/2 rounded-full"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 pt-1">
+            <span className="text-text-secondary block truncate text-[11px] font-semibold uppercase tracking-[0.08em]">
+              {title}
+            </span>
+            <span className="text-text-muted block text-[9px] normal-case tracking-normal">
+              {snapLabel}
+            </span>
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup panel"
-            className="text-text-muted hover:bg-surface-hover hover:text-text-primary rounded-sm p-1 transition-colors"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
+          <div className="flex shrink-0 items-center">
+            <button
+              type="button"
+              onClick={shrink}
+              disabled={snap === 'collapsed'}
+              aria-label="Perkecil panel"
+              className="text-text-muted hover:bg-surface-hover hover:text-text-primary flex min-h-11 min-w-11 items-center justify-center rounded-sm transition-colors disabled:pointer-events-none disabled:opacity-30"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={grow}
+              disabled={snap === 'expanded'}
+              aria-label="Perbesar panel"
+              className="text-text-muted hover:bg-surface-hover hover:text-text-primary flex min-h-11 min-w-11 items-center justify-center rounded-sm transition-colors disabled:pointer-events-none disabled:opacity-30"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 15l-6-6-6 6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Tutup panel"
+              className="text-text-muted hover:bg-surface-hover hover:text-text-primary flex min-h-11 min-w-11 items-center justify-center rounded-sm transition-colors"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">{children}</div>
+        <div
+          hidden={snap === 'collapsed'}
+          className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
+        >
+          {children}
+        </div>
       </div>
     </div>
   )

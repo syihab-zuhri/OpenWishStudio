@@ -39,7 +39,7 @@ interface SceneRendererProps {
   onElementPointerDown?: (elementId: string, e: React.PointerEvent) => void
   onHandlePointerDown?: (
     elementId: string,
-    handle: 'nw' | 'ne' | 'sw' | 'se',
+    handle: 'move' | 'nw' | 'ne' | 'sw' | 'se',
     e: React.PointerEvent,
   ) => void
 }
@@ -137,7 +137,7 @@ interface ElementRendererProps {
   onPointerDown?: (elementId: string, e: React.PointerEvent) => void
   onHandlePointerDown?: (
     elementId: string,
-    handle: 'nw' | 'ne' | 'sw' | 'se',
+    handle: 'move' | 'nw' | 'ne' | 'sw' | 'se',
     e: React.PointerEvent,
   ) => void
 }
@@ -178,9 +178,10 @@ function ElementRenderer({
       : undefined,
     zIndex: element.zIndex,
     pointerEvents: interactive ? (!element.locked ? 'auto' : 'none') : 'auto',
-    cursor: interactive && !element.locked ? 'default' : undefined,
-    // Sentuh: tanpa touch-action none, browser memilih scroll alih-alih drag
-    touchAction: interactive && !element.locked ? 'none' : undefined,
+    cursor: interactive && !element.locked ? 'grab' : undefined,
+    // Permukaan elemen tetap bisa dipakai untuk menggeser kanvas pada layar sentuh.
+    // Drag sentuh dimulai melalui move handle yang memiliki touch-action none.
+    touchAction: interactive && !element.locked ? 'pan-x pan-y' : undefined,
     userSelect: interactive ? 'none' : undefined,
     WebkitUserSelect: interactive ? 'none' : undefined,
     // Selection affordance = editor chrome — ikut token design system (cream), bukan konten scene
@@ -215,6 +216,7 @@ function ElementRenderer({
   function handlePointerDown(e: React.PointerEvent) {
     if (!interactive || element.locked) return
     if ((e.target as HTMLElement).isContentEditable) return
+    if (e.pointerType === 'touch') return
     e.stopPropagation()
     onPointerDown?.(element.id, e)
   }
@@ -245,7 +247,11 @@ function ElementRenderer({
         />
       </div>
       {primarySelected && (
-        <SelectionHandles elementId={element.id} onHandlePointerDown={onHandlePointerDown} />
+        <SelectionHandles
+          elementId={element.id}
+          moveHandleInside={element.y < 56}
+          onHandlePointerDown={onHandlePointerDown}
+        />
       )}
     </div>
   )
@@ -255,14 +261,19 @@ function ElementRenderer({
 
 interface SelectionHandlesProps {
   elementId: string
+  moveHandleInside: boolean
   onHandlePointerDown?: (
     elementId: string,
-    handle: 'nw' | 'ne' | 'sw' | 'se',
+    handle: 'move' | 'nw' | 'ne' | 'sw' | 'se',
     e: React.PointerEvent,
   ) => void
 }
 
-function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesProps) {
+function SelectionHandles({
+  elementId,
+  moveHandleInside,
+  onHandlePointerDown,
+}: SelectionHandlesProps) {
   const baseStyle: CSSProperties = {
     position: 'absolute',
     width: 8,
@@ -274,7 +285,7 @@ function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesPr
     touchAction: 'none',
   }
 
-  function makeHandler(handle: 'nw' | 'ne' | 'sw' | 'se') {
+  function makeHandler(handle: 'move' | 'nw' | 'ne' | 'sw' | 'se') {
     return (e: React.PointerEvent) => {
       e.preventDefault()
       e.stopPropagation()
@@ -286,6 +297,32 @@ function SelectionHandles({ elementId, onHandlePointerDown }: SelectionHandlesPr
 
   return (
     <>
+      {onHandlePointerDown && (
+        <button
+          type="button"
+          aria-label="Pindahkan elemen"
+          data-editor-move-handle
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={makeHandler('move')}
+          className="border-text-on-primary bg-primary text-text-on-primary absolute left-1/2 z-[10001] flex h-11 w-11 -translate-x-1/2 cursor-grab touch-none items-center justify-center rounded-full border shadow-md active:cursor-grabbing lg:hidden"
+          style={{ top: moveHandleInside ? 4 : -52 }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            className="h-5 w-5"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+              d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"
+            />
+          </svg>
+        </button>
+      )}
       {(['nw', 'ne', 'sw', 'se'] as const).map((handle) => (
         <div
           key={handle}

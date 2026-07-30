@@ -16,6 +16,15 @@ function makeScene(elements: Scene['elements']): Scene {
   }
 }
 
+function pointerDown(target: Element, pointerType: 'touch' | 'mouse', pointerId: number) {
+  const event = new Event('pointerdown', { bubbles: true, cancelable: true })
+  Object.defineProperties(event, {
+    pointerType: { value: pointerType },
+    pointerId: { value: pointerId },
+  })
+  fireEvent(target, event)
+}
+
 it('keeps public button links interactive', () => {
   const id = uuidv4()
   render(
@@ -70,6 +79,46 @@ describe('audio control', () => {
 })
 
 describe('editor 2.0 elements', () => {
+  it('keeps touch scrolling on the element surface and moves through a dedicated handle', () => {
+    const id = uuidv4()
+    const onElementPointerDown = vi.fn()
+    const onHandlePointerDown = vi.fn()
+    const { container } = render(
+      <SceneRenderer
+        interactive
+        selectedElementId={id}
+        onElementPointerDown={onElementPointerDown}
+        onHandlePointerDown={onHandlePointerDown}
+        scene={makeScene([
+          {
+            id,
+            type: 'text',
+            x: 20,
+            y: 120,
+            width: 220,
+            height: 70,
+            rotation: 0,
+            zIndex: 1,
+            locked: false,
+            props: { content: 'Geser kanvas dari sini', fontSize: 16, color: '#000000' },
+          },
+        ])}
+      />,
+    )
+
+    const element = container.querySelector<HTMLElement>(`[data-element-id="${id}"]`)!
+    expect(element.style.touchAction).toBe('pan-x pan-y')
+
+    pointerDown(element, 'touch', 1)
+    expect(onElementPointerDown).not.toHaveBeenCalled()
+
+    pointerDown(element, 'mouse', 2)
+    expect(onElementPointerDown).toHaveBeenCalledOnce()
+
+    pointerDown(screen.getByRole('button', { name: 'Pindahkan elemen' }), 'touch', 3)
+    expect(onHandlePointerDown).toHaveBeenCalledWith(id, 'move', expect.anything())
+  })
+
   it('does not render hidden elements', () => {
     render(
       <SceneRenderer
