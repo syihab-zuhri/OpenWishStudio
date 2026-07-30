@@ -59,10 +59,12 @@ interface EditorActions {
   reorderScene: (sceneId: string, toIndex: number) => void
   updateSceneBackground: (sceneId: string, background: Scene['background']) => void
   addScenes: (scenes: Scene[]) => void
+  applyStarterKit: (kit: { title: string; theme: Theme; scenes: Scene[] }) => void
   setSoundtrack: (soundtrack: Soundtrack | undefined) => void
   selectElement: (elementId: string | null, additive?: boolean) => void
   selectElements: (elementIds: string[]) => void
   addElement: (sceneId: string, element: ElementNode) => void
+  addElements: (sceneId: string, elements: ElementNode[]) => void
   updateElement: (
     sceneId: string,
     elementId: string,
@@ -336,6 +338,23 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
     })
   },
 
+  applyStarterKit(kit) {
+    if (!kit.scenes.length) return
+    set((s) => ({
+      ...withPushedHistory(s),
+      projectName: kit.title,
+      document: {
+        ...s.document,
+        project: { ...s.document.project, title: kit.title, theme: kit.theme },
+        scenes: kit.scenes.map((scene, order) => ({ ...scene, order })),
+      },
+      selectedSceneId: kit.scenes[0].id,
+      selectedElementId: null,
+      selectedElementIds: [],
+      saveStatus: 'unsaved' as SaveStatus,
+    }))
+  },
+
   setSoundtrack(soundtrack) {
     set((s) => ({
       ...withPushedHistory(s),
@@ -436,6 +455,32 @@ export const useEditorStore = create<EditorState & EditorActions>()((set, get) =
       selectedElementIds: [element.id],
       saveStatus: 'unsaved' as SaveStatus,
     }))
+  },
+
+  addElements(sceneId, elements) {
+    if (!elements.length) return
+    set((s) => {
+      const scene = s.document.scenes.find((item) => item.id === sceneId)
+      if (!scene) return s
+      const remaining = Math.max(0, 200 - scene.elements.length)
+      const incoming = elements.slice(0, remaining)
+      if (!incoming.length) return s
+      const startZ = Math.max(-1, ...scene.elements.map((element) => element.zIndex)) + 1
+      const normalized = [...incoming]
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map((element, index) => ({ ...element, zIndex: startZ + index }) as ElementNode)
+      const selectedElementIds = normalized.map((element) => element.id)
+      return {
+        ...withPushedHistory(s),
+        document: mapScenes(s.document, sceneId, (item) => ({
+          ...item,
+          elements: [...item.elements, ...normalized],
+        })),
+        selectedElementId: selectedElementIds.at(-1) ?? null,
+        selectedElementIds,
+        saveStatus: 'unsaved' as SaveStatus,
+      }
+    })
   },
 
   updateElement(sceneId, elementId, patch) {

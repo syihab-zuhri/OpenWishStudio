@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import type { ProjectDocument } from '@openwish/project-schema'
+import { DEFAULT_THEME, type ProjectDocument } from '@openwish/project-schema'
 import { runPublishPreflight } from '@/features/editor/utils/preflight'
+import dynamic from 'next/dynamic'
+
+const ShareCenter = dynamic(() => import('./ShareCenter').then((module) => module.ShareCenter))
 
 interface PublishStatus {
   status: 'draft' | 'published' | 'unpublished'
@@ -168,7 +171,7 @@ export function PublishDialog({ projectId, document, onClose }: Props) {
       style={{ background: 'rgba(3, 18, 23, 0.6)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-surface-2 w-full max-w-md overflow-hidden rounded-lg shadow-xl">
+      <div className="bg-surface-2 flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-lg shadow-xl">
         {/* Header */}
         <div className="border-border flex items-center justify-between border-b px-6 py-4">
           <h2 className="text-text-primary text-base font-semibold">Publikasikan Kreasi</h2>
@@ -190,7 +193,7 @@ export function PublishDialog({ projectId, document, onClose }: Props) {
           </button>
         </div>
 
-        <div className="space-y-5 px-6 py-5">
+        <div className="space-y-5 overflow-y-auto px-6 py-5">
           {/* Loading */}
           {!status && !loadError && (
             <div className="flex justify-center py-4">
@@ -283,6 +286,14 @@ export function PublishDialog({ projectId, document, onClose }: Props) {
                 </div>
               )}
 
+              {fullPublishedUrl && (
+                <ShareCenter
+                  title={document.project.title}
+                  url={fullPublishedUrl}
+                  theme={document.project.theme ?? DEFAULT_THEME}
+                />
+              )}
+
               {/* Expiry selector — shown when not yet published or to republish */}
               <div className="space-y-1.5">
                 {!isPublished && !result && (
@@ -319,7 +330,7 @@ export function PublishDialog({ projectId, document, onClose }: Props) {
 
         {/* Footer */}
         {status && (
-          <div className="border-border flex items-center justify-between gap-3 border-t px-6 py-4">
+          <div className="border-border flex shrink-0 items-center justify-between gap-3 border-t px-6 py-4">
             <div>
               {isPublished && !result && (
                 <button

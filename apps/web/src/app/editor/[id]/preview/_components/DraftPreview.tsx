@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import type { Route } from 'next'
 import type { ProjectDocument } from '@openwish/project-schema'
 import { SceneStack } from '@/features/viewer/components/SceneStack'
 import { SoundtrackPlayer } from '@/features/viewer/components/SoundtrackPlayer'
+import { runPublishPreflight } from '@/features/editor/utils/preflight'
 
 interface Props {
   projectId: string
@@ -15,10 +16,21 @@ interface Props {
   backHref?: Route
 }
 
+const PREVIEW_DEVICES = [
+  { label: 'Ponsel', width: 375 },
+  { label: 'Ponsel besar', width: 430 },
+  { label: 'Tablet', width: 768 },
+] as const
+
+type PreviewWidth = (typeof PREVIEW_DEVICES)[number]['width']
+
 export function DraftPreview({ projectId, projectName, document, backHref }: Props) {
   const soundtrack = document.project.soundtrack
   const [audioEnabled, setAudioEnabled] = useState(false)
   const [showAudioPrompt, setShowAudioPrompt] = useState(() => Boolean(soundtrack?.src))
+  const [previewWidth, setPreviewWidth] = useState<PreviewWidth>(430)
+  const qualityIssues = useMemo(() => runPublishPreflight(document), [document])
+  const qualityErrors = qualityIssues.filter((issue) => issue.severity === 'error')
 
   const handleEnableAudio = useCallback(() => {
     setAudioEnabled(true)
@@ -66,6 +78,72 @@ export function DraftPreview({ projectId, projectName, document, backHref }: Pro
         </span>
       </div>
 
+      <div className="border-border bg-surface flex w-full flex-col items-center justify-between gap-2 border-b px-3 py-2 sm:flex-row sm:px-4">
+        <div className="border-border-strong bg-background grid w-full grid-cols-3 rounded-md border p-1 sm:w-auto">
+          {PREVIEW_DEVICES.map((device) => (
+            <button
+              key={device.width}
+              type="button"
+              onClick={() => setPreviewWidth(device.width)}
+              aria-pressed={previewWidth === device.width}
+              className={`min-h-10 rounded-sm px-3 text-[11px] font-semibold transition-colors ${
+                previewWidth === device.width
+                  ? 'bg-primary text-text-on-primary'
+                  : 'text-text-muted hover:bg-surface-hover hover:text-text-primary'
+              }`}
+            >
+              {device.label}
+              <span className="ml-1 hidden font-normal opacity-70 md:inline">{device.width}px</span>
+            </button>
+          ))}
+        </div>
+
+        <details className="border-border-strong bg-background group w-full rounded-md border sm:w-auto sm:min-w-64">
+          <summary className="focus-visible:ring-primary flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 [&::-webkit-details-marker]:hidden">
+            <span
+              className={
+                qualityErrors.length
+                  ? 'text-error'
+                  : qualityIssues.length
+                    ? 'text-warning'
+                    : 'text-success'
+              }
+            >
+              Quality:{' '}
+              {qualityIssues.length === 0 ? 'Siap publish' : `${qualityIssues.length} catatan`}
+            </span>
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              className="text-text-muted h-4 w-4 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeWidth="1.8" d="M5 7.5l5 5 5-5" />
+            </svg>
+          </summary>
+          <div className="border-border border-t px-3 py-2">
+            {qualityIssues.length === 0 ? (
+              <p className="text-success text-xs">Semua pemeriksaan utama lolos.</p>
+            ) : (
+              <ul className="max-h-36 space-y-1 overflow-y-auto">
+                {qualityIssues.map((issue) => (
+                  <li key={issue.id} className="text-text-secondary text-[11px] leading-snug">
+                    <span
+                      className={issue.severity === 'error' ? 'text-error' : 'text-warning'}
+                      aria-hidden="true"
+                    >
+                      {issue.severity === 'error' ? '●' : '▲'}
+                    </span>{' '}
+                    <span className="font-semibold">{issue.sceneName}:</span> {issue.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </details>
+      </div>
+
       {/* Audio Prompt */}
       {showAudioPrompt && !audioEnabled && (
         <div
@@ -107,6 +185,7 @@ export function DraftPreview({ projectId, projectName, document, backHref }: Pro
         <SceneStack
           scenes={document.scenes}
           theme={document.project.theme}
+          maxWidth={previewWidth}
           audioEnabled={audioEnabled}
           onAudioToggle={soundtrack?.src ? handleToggleAudio : undefined}
         />

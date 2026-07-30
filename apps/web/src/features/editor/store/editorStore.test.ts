@@ -131,6 +131,49 @@ describe('addElement', () => {
   })
 })
 
+describe('addElements', () => {
+  it('adds a group in one history frame and selects all inserted elements', () => {
+    const sceneId = getState().document.scenes[0].id
+    const first = makeTextElement()
+    const second = makeTextElement({ id: uuidv4(), zIndex: 1 })
+    const pastBefore = getState().past.length
+
+    getState().addElements(sceneId, [first, second])
+
+    expect(getState().document.scenes[0].elements).toHaveLength(2)
+    expect(getState().selectedElementIds).toEqual([first.id, second.id])
+    expect(getState().past.length).toBe(pastBefore + 1)
+    getState().undo()
+    expect(getState().document.scenes[0].elements).toHaveLength(0)
+  })
+})
+
+describe('applyStarterKit', () => {
+  it('replaces the blank document and can be undone', () => {
+    const firstScene = makeScene(0)
+    const secondScene = makeScene(1)
+    getState().applyStarterKit({
+      title: 'Untuk Nara',
+      theme: {
+        primary: '#173F47',
+        secondary: '#B9825A',
+        accent: '#E7C9A9',
+        text: '#153238',
+        surface: '#FFF9F1',
+        headingFont: 'Georgia, serif',
+        bodyFont: 'Inter, sans-serif',
+      },
+      scenes: [firstScene, secondScene],
+    })
+
+    expect(getState().projectName).toBe('Untuk Nara')
+    expect(getState().document.scenes).toHaveLength(2)
+    expect(getState().selectedSceneId).toBe(firstScene.id)
+    getState().undo()
+    expect(getState().document.scenes).toHaveLength(1)
+  })
+})
+
 // ─── updateElement vs commitElementDrag ───────────────────────────────────────
 
 describe('updateElement', () => {

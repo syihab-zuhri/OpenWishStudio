@@ -17,12 +17,20 @@ import { SceneRenderer } from '@/features/editor/components/SceneRenderer'
 import { useDrag } from '@/features/editor/hooks/useDrag'
 import { computeSnap } from '@/features/editor/utils/snapping'
 import { useAutosave } from '@/features/editor/hooks/useAutosave'
+import {
+  CONTENT_BLOCKS,
+  createContentBlock,
+  type ContentBlockKind,
+} from '@/features/editor/utils/contentBlocks'
 import { PublishDialog } from './PublishDialog'
 import dynamic from 'next/dynamic'
 
 const TemplatePanel = dynamic(() => import('./EditorPanels').then((module) => module.TemplatePanel))
 const AsetPanel = dynamic(() => import('./EditorPanels').then((module) => module.AsetPanel))
 const MusikPanel = dynamic(() => import('./EditorPanels').then((module) => module.MusikPanel))
+const SmartStartDialog = dynamic(() =>
+  import('./SmartStartDialog').then((module) => module.SmartStartDialog),
+)
 
 type SidebarPanel = 'elemen' | 'template' | 'aset' | 'musik' | 'layer' | null
 
@@ -70,11 +78,47 @@ function EditorLayout() {
   const canRedo = useEditorStore((s) => s.future.length > 0)
   const hasSelectedElement = useEditorStore((s) => s.selectedElementId !== null)
   const selectedElementId = useEditorStore((s) => s.selectedElementId)
+  const documentIsBlank = useEditorStore(
+    (s) => s.document.scenes.length === 1 && s.document.scenes[0]?.elements.length === 0,
+  )
+  const applyStarterKit = useEditorStore((s) => s.applyStarterKit)
   const [showPublish, setShowPublish] = useState(false)
+  const [showSmartStart, setShowSmartStart] = useState(false)
   const [activePanel, setActivePanel] = useState<SidebarPanel>(null)
   const [showInspectorSheet, setShowInspectorSheet] = useState(false)
+  const smartStartChecked = useRef(false)
 
   useAutosave()
+
+  useEffect(() => {
+    if (!projectId || smartStartChecked.current) return
+    smartStartChecked.current = true
+    try {
+      if (
+        documentIsBlank &&
+        sessionStorage.getItem(`openwish:smart-start:${projectId}`) !== 'done'
+      ) {
+        setShowSmartStart(true)
+      }
+    } catch {
+      if (documentIsBlank) setShowSmartStart(true)
+    }
+  }, [documentIsBlank, projectId])
+
+  useEffect(() => {
+    const openSmartStart = () => setShowSmartStart(true)
+    window.addEventListener('openwish:open-smart-start', openSmartStart)
+    return () => window.removeEventListener('openwish:open-smart-start', openSmartStart)
+  }, [])
+
+  function dismissSmartStart() {
+    try {
+      sessionStorage.setItem(`openwish:smart-start:${projectId}`, 'done')
+    } catch {
+      // Preferensi hanya berlaku selama dialog terbuka jika storage diblokir.
+    }
+    setShowSmartStart(false)
+  }
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -241,6 +285,15 @@ function EditorLayout() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {documentIsBlank && (
+            <button
+              type="button"
+              onClick={() => setShowSmartStart(true)}
+              className="border-primary/35 bg-primary-subtle text-primary hover:border-primary hidden min-h-8 rounded-sm border px-3 text-xs font-semibold transition-colors sm:block"
+            >
+              Smart Start
+            </button>
+          )}
           <SaveStatusBadge status={saveStatus} detail={lastSaveError} />
           <button
             type="button"
@@ -319,6 +372,16 @@ function EditorLayout() {
           projectId={projectId}
           document={useEditorStore.getState().document}
           onClose={() => setShowPublish(false)}
+        />
+      )}
+
+      {showSmartStart && (
+        <SmartStartDialog
+          onSkip={dismissSmartStart}
+          onApply={(kit) => {
+            applyStarterKit(kit)
+            dismissSmartStart()
+          }}
         />
       )}
 
@@ -1239,23 +1302,70 @@ function ElementInspector({
   onDelete: () => void
   onReorderZ: (dir: 'up' | 'down' | 'front' | 'back') => void
 }) {
+  const [mode, setMode] = useState<'basic' | 'advanced'>('basic')
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('openwish:inspector-mode')
+      if (stored === 'basic' || stored === 'advanced') setMode(stored)
+    } catch {
+      // Mode kembali ke Basic jika storage browser tidak tersedia.
+    }
+  }, [])
+
+  function selectMode(nextMode: 'basic' | 'advanced') {
+    setMode(nextMode)
+    try {
+      window.localStorage.setItem('openwish:inspector-mode', nextMode)
+    } catch {
+      // Mode tetap berlaku selama komponen hidup.
+    }
+  }
+
   return (
     <div className="divide-border divide-y">
       {/* Type badge */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <span className="bg-primary-subtle text-primary rounded-full px-2 py-0.5 text-xs font-medium capitalize">
-          {element.type}
-        </span>
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label="Hapus elemen"
-          className="text-error hover:bg-error-subtle rounded-sm p-1 transition-colors"
+      <div className="space-y-3 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="bg-primary-subtle text-primary rounded-full px-2 py-0.5 text-xs font-medium">
+            {ELEMENT_TYPE_LABELS[element.type]}
+          </span>
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Hapus elemen"
+            className="text-error hover:bg-error-subtle flex min-h-11 min-w-11 items-center justify-center rounded-sm transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M6.5 1h3a.5.5 0 010 1h-3a.5.5 0 010-1zM2 3.5A.5.5 0 012.5 3h11a.5.5 0 010 1h-.5v9a1 1 0 01-1 1h-7a1 1 0 01-1-1V4H2.5a.5.5 0 01-.5-.5z" />
+            </svg>
+          </button>
+        </div>
+        <div
+          className="border-border-strong bg-background grid grid-cols-2 rounded-md border p-1"
+          aria-label="Mode properti"
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-            <path d="M6.5 1h3a.5.5 0 010 1h-3a.5.5 0 010-1zM2 3.5A.5.5 0 012.5 3h11a.5.5 0 010 1h-.5v9a1 1 0 01-1 1h-7a1 1 0 01-1-1V4H2.5a.5.5 0 01-.5-.5z" />
-          </svg>
-        </button>
+          {(['basic', 'advanced'] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => selectMode(item)}
+              aria-pressed={mode === item}
+              className={`min-h-9 rounded-sm px-2 text-xs font-semibold transition-colors ${
+                mode === item
+                  ? 'bg-surface text-primary shadow-xs'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              {item === 'basic' ? 'Basic' : 'Advanced'}
+            </button>
+          ))}
+        </div>
+        <p className="text-text-muted text-[10px] leading-relaxed">
+          {mode === 'basic'
+            ? 'Kontrol utama untuk mengubah isi dan tampilan.'
+            : 'Posisi presisi, efek, animasi, dan urutan layer.'}
+        </p>
       </div>
 
       <InspectorSection title="Identitas & Tampilan">
@@ -1300,150 +1410,158 @@ function ElementInspector({
         />
       </InspectorSection>
 
-      {/* Position & size */}
-      <InspectorSection title="Posisi & Ukuran">
-        <div className="grid grid-cols-2 gap-2">
-          <NumInput label="X" value={element.x} onChange={(v) => onUpdate({ x: v })} />
-          <NumInput label="Y" value={element.y} onChange={(v) => onUpdate({ y: v })} />
-          <NumInput
-            label="W"
-            value={element.width}
-            onChange={(v) => onUpdate({ width: Math.max(1, v) })}
-          />
-          <NumInput
-            label="H"
-            value={element.height}
-            onChange={(v) => onUpdate({ height: Math.max(1, v) })}
-          />
-          <NumInput
-            label="Rotasi"
-            value={element.rotation}
-            onChange={(v) => onUpdate({ rotation: v })}
-            step={1}
-            min={-360}
-            max={360}
-          />
-          <div className="flex items-center gap-2">
-            <label className="text-text-secondary flex cursor-pointer items-center gap-1.5 text-xs">
-              <input
-                type="checkbox"
-                checked={element.locked}
-                onChange={(e) => onUpdate({ locked: e.target.checked })}
-                className="accent-primary rounded-sm"
+      {mode === 'advanced' && (
+        <>
+          {/* Position & size */}
+          <InspectorSection title="Posisi & Ukuran">
+            <div className="grid grid-cols-2 gap-2">
+              <NumInput label="X" value={element.x} onChange={(v) => onUpdate({ x: v })} />
+              <NumInput label="Y" value={element.y} onChange={(v) => onUpdate({ y: v })} />
+              <NumInput
+                label="W"
+                value={element.width}
+                onChange={(v) => onUpdate({ width: Math.max(1, v) })}
               />
-              Kunci
-            </label>
-          </div>
-        </div>
-      </InspectorSection>
+              <NumInput
+                label="H"
+                value={element.height}
+                onChange={(v) => onUpdate({ height: Math.max(1, v) })}
+              />
+              <NumInput
+                label="Rotasi"
+                value={element.rotation}
+                onChange={(v) => onUpdate({ rotation: v })}
+                step={1}
+                min={-360}
+                max={360}
+              />
+              <div className="flex items-center gap-2">
+                <label className="text-text-secondary flex cursor-pointer items-center gap-1.5 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={element.locked}
+                    onChange={(e) => onUpdate({ locked: e.target.checked })}
+                    className="accent-primary rounded-sm"
+                  />
+                  Kunci
+                </label>
+              </div>
+            </div>
+          </InspectorSection>
 
-      <InspectorSection title="Efek">
-        <CheckInput
-          label="Bayangan"
-          checked={Boolean(element.shadow)}
-          onChange={(enabled) =>
-            onUpdate({
-              shadow: enabled ? { x: 0, y: 8, blur: 24, spread: 0, color: '#00000033' } : undefined,
-            })
-          }
-        />
-        {element.shadow && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <NumInput
-              label="X"
-              value={element.shadow.x}
-              min={-200}
-              max={200}
-              onChange={(x) => onUpdate({ shadow: { ...element.shadow!, x } })}
+          <InspectorSection title="Efek">
+            <CheckInput
+              label="Bayangan"
+              checked={Boolean(element.shadow)}
+              onChange={(enabled) =>
+                onUpdate({
+                  shadow: enabled
+                    ? { x: 0, y: 8, blur: 24, spread: 0, color: '#00000033' }
+                    : undefined,
+                })
+              }
             />
-            <NumInput
-              label="Y"
-              value={element.shadow.y}
-              min={-200}
-              max={200}
-              onChange={(y) => onUpdate({ shadow: { ...element.shadow!, y } })}
-            />
-            <NumInput
-              label="Blur"
-              value={element.shadow.blur}
-              min={0}
-              max={200}
-              onChange={(blur) => onUpdate({ shadow: { ...element.shadow!, blur } })}
-            />
-            <NumInput
-              label="Sebar"
-              value={element.shadow.spread}
-              min={-100}
-              max={100}
-              onChange={(spread) => onUpdate({ shadow: { ...element.shadow!, spread } })}
-            />
-          </div>
-        )}
-        {element.shadow && (
-          <ColorInput
-            label="Warna bayangan"
-            value={element.shadow.color}
-            onChange={(color) => onUpdate({ shadow: { ...element.shadow!, color } })}
-          />
-        )}
-        <label className="text-text-secondary mt-3 block text-xs">Animasi masuk</label>
-        <select
-          value={element.animation?.type ?? 'none'}
-          onChange={(e) =>
-            onUpdate({
-              animation: {
-                type: e.target.value as NonNullable<ElementNode['animation']>['type'],
-                duration: element.animation?.duration ?? 400,
-                delay: element.animation?.delay ?? 0,
-              },
-            })
-          }
-          className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
-        >
-          <option value="none">Tanpa animasi</option>
-          <option value="fade">Fade</option>
-          <option value="rise">Rise</option>
-          <option value="slide-left">Slide kiri</option>
-          <option value="slide-right">Slide kanan</option>
-          <option value="scale">Scale</option>
-        </select>
-        {element.animation && element.animation.type !== 'none' && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <NumInput
-              label="Durasi (ms)"
-              value={element.animation.duration}
-              min={100}
-              max={2000}
-              step={50}
-              onChange={(duration) => onUpdate({ animation: { ...element.animation!, duration } })}
-            />
-            <NumInput
-              label="Delay (ms)"
-              value={element.animation.delay}
-              min={0}
-              max={10000}
-              step={50}
-              onChange={(delay) => onUpdate({ animation: { ...element.animation!, delay } })}
-            />
-          </div>
-        )}
-      </InspectorSection>
-
-      {/* Z-order */}
-      <InspectorSection title="Urutan Lapisan">
-        <div className="flex gap-1">
-          {(['back', 'down', 'up', 'front'] as const).map((dir) => (
-            <button
-              key={dir}
-              type="button"
-              onClick={() => onReorderZ(dir)}
-              className="border-border-strong text-text-secondary hover:border-primary hover:text-primary flex-1 rounded-sm border py-1 text-xs transition-colors"
+            {element.shadow && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <NumInput
+                  label="X"
+                  value={element.shadow.x}
+                  min={-200}
+                  max={200}
+                  onChange={(x) => onUpdate({ shadow: { ...element.shadow!, x } })}
+                />
+                <NumInput
+                  label="Y"
+                  value={element.shadow.y}
+                  min={-200}
+                  max={200}
+                  onChange={(y) => onUpdate({ shadow: { ...element.shadow!, y } })}
+                />
+                <NumInput
+                  label="Blur"
+                  value={element.shadow.blur}
+                  min={0}
+                  max={200}
+                  onChange={(blur) => onUpdate({ shadow: { ...element.shadow!, blur } })}
+                />
+                <NumInput
+                  label="Sebar"
+                  value={element.shadow.spread}
+                  min={-100}
+                  max={100}
+                  onChange={(spread) => onUpdate({ shadow: { ...element.shadow!, spread } })}
+                />
+              </div>
+            )}
+            {element.shadow && (
+              <ColorInput
+                label="Warna bayangan"
+                value={element.shadow.color}
+                onChange={(color) => onUpdate({ shadow: { ...element.shadow!, color } })}
+              />
+            )}
+            <label className="text-text-secondary mt-3 block text-xs">Animasi masuk</label>
+            <select
+              value={element.animation?.type ?? 'none'}
+              onChange={(e) =>
+                onUpdate({
+                  animation: {
+                    type: e.target.value as NonNullable<ElementNode['animation']>['type'],
+                    duration: element.animation?.duration ?? 400,
+                    delay: element.animation?.delay ?? 0,
+                  },
+                })
+              }
+              className="border-border-strong bg-background text-text-primary focus:border-primary mt-1 w-full rounded-sm border px-2 py-1.5 text-xs outline-none"
             >
-              {dir === 'back' ? '⤓' : dir === 'down' ? '↓' : dir === 'up' ? '↑' : '⤒'}
-            </button>
-          ))}
-        </div>
-      </InspectorSection>
+              <option value="none">Tanpa animasi</option>
+              <option value="fade">Fade</option>
+              <option value="rise">Rise</option>
+              <option value="slide-left">Slide kiri</option>
+              <option value="slide-right">Slide kanan</option>
+              <option value="scale">Scale</option>
+            </select>
+            {element.animation && element.animation.type !== 'none' && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <NumInput
+                  label="Durasi (ms)"
+                  value={element.animation.duration}
+                  min={100}
+                  max={2000}
+                  step={50}
+                  onChange={(duration) =>
+                    onUpdate({ animation: { ...element.animation!, duration } })
+                  }
+                />
+                <NumInput
+                  label="Delay (ms)"
+                  value={element.animation.delay}
+                  min={0}
+                  max={10000}
+                  step={50}
+                  onChange={(delay) => onUpdate({ animation: { ...element.animation!, delay } })}
+                />
+              </div>
+            )}
+          </InspectorSection>
+
+          {/* Z-order */}
+          <InspectorSection title="Urutan Lapisan">
+            <div className="flex gap-1">
+              {(['back', 'down', 'up', 'front'] as const).map((dir) => (
+                <button
+                  key={dir}
+                  type="button"
+                  onClick={() => onReorderZ(dir)}
+                  className="border-border-strong text-text-secondary hover:border-primary hover:text-primary flex-1 rounded-sm border py-1 text-xs transition-colors"
+                >
+                  {dir === 'back' ? '⤓' : dir === 'down' ? '↓' : dir === 'up' ? '↑' : '⤒'}
+                </button>
+              ))}
+            </div>
+          </InspectorSection>
+        </>
+      )}
 
       {/* Type-specific props */}
       <ElementPropsInspector element={element} onUpdateProps={onUpdateProps} />
@@ -3071,27 +3189,113 @@ function makeDefaultElement(type: ElementNode['type']): ElementNode {
 
 function ElemenPanel() {
   const selectedSceneId = useEditorStore((s) => s.selectedSceneId)
+  const sceneIsBlank = useEditorStore((s) =>
+    s.document.scenes.some(
+      (scene) => scene.id === s.selectedSceneId && scene.elements.length === 0,
+    ),
+  )
   const addElement = useEditorStore((s) => s.addElement)
+  const addElements = useEditorStore((s) => s.addElements)
+  const theme = useEditorStore((s) => s.document.project.theme ?? DEFAULT_THEME)
+  const [feedback, setFeedback] = useState('')
 
   function handleAdd(type: ElementNode['type']) {
     if (!selectedSceneId) return
     addElement(selectedSceneId, makeDefaultElement(type))
   }
 
+  function handleAddBlock(kind: ContentBlockKind, label: string) {
+    if (!selectedSceneId) return
+    addElements(selectedSceneId, createContentBlock(kind, theme))
+    setFeedback(`${label} ditambahkan sebagai satu grup.`)
+    window.setTimeout(() => setFeedback(''), 2400)
+  }
+
   return (
-    <div className="grid grid-cols-3 gap-2 lg:grid-cols-2">
-      {ELEMENT_TYPES.map(({ type, label, icon }) => (
+    <div className="space-y-5">
+      {sceneIsBlank && (
         <button
-          key={type}
           type="button"
-          onClick={() => handleAdd(type)}
-          disabled={!selectedSceneId}
-          className="border-border bg-background text-text-secondary hover:border-primary hover:bg-primary-subtle hover:text-primary flex flex-col items-center gap-1.5 rounded-md border p-3 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => window.dispatchEvent(new Event('openwish:open-smart-start'))}
+          className="border-primary/35 bg-primary-subtle text-primary hover:border-primary flex min-h-11 w-full items-center justify-between rounded-md border px-3 text-left text-xs font-semibold transition-colors"
         >
-          <span className="text-xl leading-none">{icon}</span>
-          <span className="text-[11px] font-medium">{label}</span>
+          <span>
+            <span className="block">Butuh titik awal?</span>
+            <span className="text-text-muted mt-0.5 block text-[10px] font-normal">
+              Buat empat scene lewat Smart Start.
+            </span>
+          </span>
+          <span aria-hidden="true">→</span>
         </button>
-      ))}
+      )}
+      <section aria-labelledby="content-block-heading">
+        <div className="mb-2 flex items-end justify-between gap-3">
+          <div>
+            <h3 id="content-block-heading" className="text-text-primary text-xs font-semibold">
+              Blok siap pakai
+            </h3>
+            <p className="text-text-muted mt-0.5 text-[10px]">Sekali klik, tetap bebas diedit.</p>
+          </div>
+          <span className="bg-primary-subtle text-primary rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+            Baru
+          </span>
+        </div>
+        <div className="space-y-2">
+          {CONTENT_BLOCKS.map((block) => (
+            <button
+              key={block.kind}
+              type="button"
+              onClick={() => handleAddBlock(block.kind, block.label)}
+              disabled={!selectedSceneId}
+              className="border-border-strong bg-background hover:border-primary hover:bg-primary-subtle group flex min-h-16 w-full items-center gap-3 rounded-md border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="border-border bg-surface text-primary group-hover:border-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border font-serif text-sm font-bold">
+                {block.mark}
+              </span>
+              <span className="min-w-0">
+                <span className="text-text-primary block text-xs font-semibold">{block.label}</span>
+                <span className="text-text-muted mt-0.5 block text-[10px] leading-snug">
+                  {block.description}
+                </span>
+              </span>
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                className="text-text-muted ml-auto h-4 w-4 shrink-0"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeWidth="1.8" d="M10 4v12M4 10h12" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="single-elements-heading" className="border-border border-t pt-4">
+        <h3 id="single-elements-heading" className="text-text-primary mb-2 text-xs font-semibold">
+          Elemen tunggal
+        </h3>
+        <div className="grid grid-cols-3 gap-2 lg:grid-cols-2">
+          {ELEMENT_TYPES.map(({ type, label, icon }) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => handleAdd(type)}
+              disabled={!selectedSceneId}
+              className="border-border bg-background text-text-secondary hover:border-primary hover:bg-primary-subtle hover:text-primary flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-md border p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="text-lg leading-none" aria-hidden="true">
+                {icon}
+              </span>
+              <span className="text-center text-[10px] font-medium leading-tight">{label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <p role="status" aria-live="polite" className="text-success min-h-4 text-[10px]">
+        {feedback}
+      </p>
     </div>
   )
 }
